@@ -357,6 +357,26 @@ export class TreeApi<T> {
     safeRun(this.props.onSelect, this.selectedNodes);
   }
 
+  selectBatch(ids: string[]) {
+    if (!Array.isArray(ids)) return;
+    if (ids.length === 0) {
+      this.deselectAll();
+      return;
+    }
+    const focusId = ids[0];
+    if (!focusId) return;
+    const node = this.get(identifyNull(focusId));
+    if (!node) return;
+    this.dispatch(selection.clear())
+    this.dispatch(focus(node.id));
+    this.dispatch(selection.add(ids));
+    this.dispatch(selection.anchor(node.id));
+    this.dispatch(selection.mostRecent(node.id));
+    this.scrollTo(node);
+    if (this.focusedNode) safeRun(this.props.onFocus, this.focusedNode);
+    safeRun(this.props.onSelect, this.selectedNodes);
+  }
+
   selectContiguous(identity: Identity) {
     if (!identity) return;
     const id = identify(identity);
