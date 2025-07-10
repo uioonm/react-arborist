@@ -4,6 +4,7 @@ import { DragItem } from "../types/dnd";
 import { computeDrop } from "./compute-drop";
 import { DropResult } from "./drop-hook";
 import { actions as dnd } from "../state/dnd-slice";
+import { ROOT_ID } from "../data/create-root";
 
 export function useOuterDrop() {
   const tree = useTreeApi();
@@ -35,6 +36,18 @@ export function useOuterDrop() {
         } else {
           tree.hideCursor();
         }
+      },
+      drop: (_, monitor) => {
+        if (!monitor.canDrop()) return null;
+        const { parentId, index } = tree.state.dnd;
+        tree.props.onMove?.({
+          dragIds: tree.state.dnd.dragIds,
+          parentId: parentId === ROOT_ID ? null : parentId,
+          index: index === null ? 0 : index,
+          dragNodes: tree.dragNodes,
+          parentNode: tree.get(parentId),
+        });
+        return { parentId, index };
       },
     }),
     [tree]
