@@ -491,6 +491,50 @@ export class TreeApi<T> {
 
   /* Visibility */
 
+  batchSetOpen(identities: Identity[], isOpen: boolean) {
+    const ids = identities
+      .map(utils.identifyNull)
+      .filter((id): id is string => !!id);
+    if (ids.length === 0) return;
+    this.dispatch(visibility.batchUpdate(ids, isOpen, this.isFiltered));
+  }
+
+  openAllUnder(identity: Identity) {
+    const id = utils.identifyNull(identity);
+    if (!id) return;
+
+    const node = this.get(id);
+    if (!node || node.isLeaf) return;
+
+    const allIds: string[] = [];
+    utils.walk(node, (n) => {
+      if (n.isInternal) allIds.push(n.id);
+    });
+
+    this.batchSetOpen(
+      allIds.map((id) => id),
+      true,
+    );
+  }
+
+  closeAllUnder(identity: Identity) {
+    const id = utils.identifyNull(identity);
+    if (!id) return;
+
+    const node = this.get(id);
+    if (!node || node.isLeaf) return;
+
+    const allIds: string[] = [];
+    utils.walk(node, (n) => {
+      if (n.isInternal) allIds.push(n.id);
+    });
+
+    this.batchSetOpen(
+      allIds.map((id) => id),
+      false,
+    );
+  }
+
   open(identity: Identity) {
     const id = identifyNull(identity);
     if (!id) return;
