@@ -610,10 +610,10 @@ export class TreeApi<T> {
         let basePosition;
         const containerHeight = this.props.height ?? 0;
         const itemSize = this.props.rowHeight ?? 0;
-        const paddingBottom =
-          this.props.padding ?? this.props.paddingBottom ?? 0;
-        const paddingTop = this.props.padding ?? this.props.paddingTop ?? 0;
-        const verticalPadding = paddingBottom + paddingTop;
+        // 合并 padding 相关的计算
+        const verticalPadding =
+          (this.props.padding ?? 0) * 2 ||
+          (this.props.paddingBottom ?? 0) + (this.props.paddingTop ?? 0);
         const itemCount = this.visibleNodes?.length ?? 0;
         switch (align) {
           case "start":
@@ -622,16 +622,35 @@ export class TreeApi<T> {
           case "end":
             basePosition = index * itemSize + itemSize - containerHeight;
             break;
-          // center/smart/auto
-          default:
+          case "center":
             basePosition =
               index * itemSize + itemSize / 2 - containerHeight / 2;
+            break;
+          // smart/auto
+          default:
+            // @ts-ignore 忽略state.scrollOffset的类型检查
+            const currentScrollTop = this.list.current?.state.scrollOffset ?? 0;
+            // 计算节点的位置
+            const nodePosition = index * itemSize;
+            // 判断节点是否在可视区域内
+            const isVisible =
+              nodePosition >= currentScrollTop - itemSize - verticalPadding &&
+              nodePosition <=
+                currentScrollTop + containerHeight + verticalPadding + itemSize;
+            // 如果节点不在可视区域内,才进行滚动
+            if (!isVisible) {
+              basePosition =
+                index * itemSize + itemSize / 2 - containerHeight / 2;
+            }
+            break;
         }
         let targetPosition = basePosition;
-        const maxScrollTop =
-          itemCount * itemSize - containerHeight + verticalPadding; // 最大可滚动位置，考虑padding
-        targetPosition = Math.max(0, Math.min(targetPosition, maxScrollTop));
-        this.list.current?.scrollTo(targetPosition);
+        if (targetPosition) {
+          const maxScrollTop =
+            itemCount * itemSize - containerHeight + verticalPadding; // 最大可滚动位置，考虑padding
+          targetPosition = Math.max(0, Math.min(targetPosition, maxScrollTop));
+          this.list.current?.scrollTo(targetPosition);
+        }
       })
       .catch(() => {
         // Id: ${id} never appeared in the list.
