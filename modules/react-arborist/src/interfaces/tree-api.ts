@@ -35,7 +35,7 @@ export class TreeApi<T> {
     public store: Store<RootState, Actions>,
     public props: TreeProps<T>,
     public list: MutableRefObject<FixedSizeList | null>,
-    public listEl: MutableRefObject<HTMLDivElement | null>
+    public listEl: MutableRefObject<HTMLDivElement | null>,
   ) {
     /* Changes here must also be made in update() */
     this.root = createRoot<T>(this);
@@ -96,7 +96,7 @@ export class TreeApi<T> {
       this.props.searchMatch ??
       ((node, term) => {
         const string = JSON.stringify(
-          Object.values(node.data as { [k: string]: unknown })
+          Object.values(node.data as { [k: string]: unknown }),
         );
         return string.toLocaleLowerCase().includes(term.toLocaleLowerCase());
       });
@@ -113,7 +113,7 @@ export class TreeApi<T> {
     const id = utils.access<string>(data, get);
     if (!id)
       throw new Error(
-        "Data must contain an 'id' property or props.idAccessor must return a string"
+        "Data must contain an 'id' property or props.idAccessor must return a string",
       );
     return id;
   }
@@ -194,7 +194,7 @@ export class TreeApi<T> {
       type?: "internal" | "leaf";
       parentId?: null | string;
       index?: null | number;
-    } = {}
+    } = {},
   ) {
     const parentId =
       opts.parentId === undefined
@@ -367,7 +367,7 @@ export class TreeApi<T> {
     if (!focusId) return;
     const node = this.get(identifyNull(focusId));
     if (!node) return;
-    this.dispatch(selection.clear())
+    this.dispatch(selection.clear());
     this.dispatch(focus(node.id));
     this.dispatch(selection.add(ids));
     this.dispatch(selection.anchor(node.id));
@@ -607,7 +607,31 @@ export class TreeApi<T> {
       .then(() => {
         const index = this.idToIndex[id];
         if (index === undefined) return;
-        this.list.current?.scrollToItem(index, align);
+        let basePosition;
+        const containerHeight = this.props.height ?? 0;
+        const itemSize = this.props.rowHeight ?? 0;
+        const paddingBottom =
+          this.props.padding ?? this.props.paddingBottom ?? 0;
+        const paddingTop = this.props.padding ?? this.props.paddingTop ?? 0;
+        const verticalPadding = paddingBottom + paddingTop;
+        const itemCount = this.visibleNodes?.length ?? 0;
+        switch (align) {
+          case "start":
+            basePosition = index * itemSize;
+            break;
+          case "end":
+            basePosition = index * itemSize + itemSize - containerHeight;
+            break;
+          // center/smart/auto
+          default:
+            basePosition =
+              index * itemSize + itemSize / 2 - containerHeight / 2;
+        }
+        let targetPosition = basePosition;
+        const maxScrollTop =
+          itemCount * itemSize - containerHeight + verticalPadding; // 最大可滚动位置，考虑padding
+        targetPosition = Math.max(0, Math.min(targetPosition, maxScrollTop));
+        this.list.current?.scrollTo(targetPosition);
       })
       .catch(() => {
         // Id: ${id} never appeared in the list.
