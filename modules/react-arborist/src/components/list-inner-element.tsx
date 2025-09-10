@@ -4,17 +4,18 @@ import { useTreeApi } from "../context";
 
 export const ListInnerElement = forwardRef<any, any>(function InnerElement(
   { style, ...rest },
-  ref
+  ref,
 ) {
   const tree = useTreeApi();
-  const paddingTop = tree.props.padding ?? tree.props.paddingTop ?? 0;
-  const paddingBottom = tree.props.padding ?? tree.props.paddingBottom ?? 0;
+  const translateY = rest.children[0]?.props.style.top ?? 0;
+  const paddingTop =
+    parseFloat(style.top as string) +
+    (tree.props.padding ?? tree.props.paddingTop ?? 0);
   return (
     <div
       ref={ref}
       style={{
-        ...style,
-        height: `${parseFloat(style.height) + paddingTop + paddingBottom}px`,
+        transform: `translateY(${translateY + paddingTop}px)`,
       }}
       {...rest}
     />

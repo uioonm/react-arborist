@@ -50,9 +50,7 @@ export const RowContainer = React.memo(function RowContainer<T>({
   const rowStyle = useMemo(
     () => ({
       ...style,
-      top:
-        parseFloat(style.top as string) +
-        (tree.props.padding ?? tree.props.paddingTop ?? 0),
+      position: "static",
     }),
     [style, tree.props.padding, tree.props.paddingTop]
   );
@@ -61,7 +59,7 @@ export const RowContainer = React.memo(function RowContainer<T>({
     "aria-level": node.level + 1,
     "aria-selected": node.isSelected,
     "aria-expanded": node.isOpen,
-    style: rowStyle,
+    style: rowStyle as React.CSSProperties,
     tabIndex: -1,
     className: tree.props.rowClassName,
   };

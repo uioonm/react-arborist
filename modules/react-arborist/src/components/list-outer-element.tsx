@@ -5,10 +5,12 @@ import { Cursor } from "./cursor";
 
 export const ListOuterElement = forwardRef(function Outer(
   props: React.HTMLProps<HTMLDivElement>,
-  ref
+  ref,
 ) {
   const { children, ...rest } = props;
   const tree = useTreeApi();
+  const paddingTop = tree.props.padding ?? tree.props.paddingTop ?? 0;
+  const paddingBottom = tree.props.padding ?? tree.props.paddingBottom ?? 0;
   return (
     <div
       // @ts-ignore
@@ -18,18 +20,18 @@ export const ListOuterElement = forwardRef(function Outer(
         if (e.currentTarget === e.target) tree.deselectAll();
       }}
     >
-      <DropContainer />
+      <DropContainer paddingGap={paddingTop + paddingBottom} />
       {children}
     </div>
   );
 });
 
-const DropContainer = () => {
+const DropContainer = ({ paddingGap }: { paddingGap: number }) => {
   const tree = useTreeApi();
   return (
     <div
       style={{
-        height: tree.visibleNodes.length * tree.rowHeight,
+        height: tree.visibleNodes.length * tree.rowHeight +paddingGap,
         width: "100%",
         position: "absolute",
         left: "0",
