@@ -14,6 +14,8 @@ export const ListInnerElement = forwardRef<any, any>(function InnerElement(
       ref={ref}
       style={{
         transform: `translateY(${translateY}px)`,
+        minWidth: "100%",
+        width: "fit-content",
       }}
       {...rest}
     />
