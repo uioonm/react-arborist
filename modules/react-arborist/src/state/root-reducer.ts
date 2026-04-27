@@ -3,6 +3,7 @@ import { reducer as focus } from "./focus-slice";
 import { reducer as edit } from "./edit-slice";
 import { reducer as dnd } from "./dnd-slice";
 import { reducer as selection } from "./selection-slice";
+import { reducer as checked } from "./checked-slice";
 import { reducer as open } from "./open-slice";
 import { reducer as drag } from "./drag-slice";
 
@@ -12,6 +13,7 @@ export const rootReducer = combineReducers({
     edit,
     open,
     selection,
+    checked,
     drag,
   }),
   dnd,

@@ -14,6 +14,7 @@ import { focus, treeBlur } from "../state/focus-slice";
 import { createRoot, ROOT_ID } from "../data/create-root";
 import { actions as visibility } from "../state/open-slice";
 import { actions as selection } from "../state/selection-slice";
+import { actions as checked } from "../state/checked-slice";
 import { actions as dnd } from "../state/dnd-slice";
 import { DefaultDragPreview } from "../components/default-drag-preview";
 import { DefaultContainer } from "../components/default-container";
@@ -23,6 +24,8 @@ import { createList } from "../data/create-list";
 import { createIndex } from "../data/create-index";
 
 const { safeRun, identify, identifyNull } = utils;
+const EMPTY_IDS = new Set<string>();
+
 export class TreeApi<T> {
   static editPromise: null | ((args: EditResult) => void);
   root: NodeApi<T>;
@@ -30,6 +33,13 @@ export class TreeApi<T> {
   visibleStartIndex: number = 0;
   visibleStopIndex: number = 0;
   idToIndex: { [id: string]: number };
+  private checkedStateCache: {
+    root: NodeApi<T>;
+    sourceIds: Set<string>; // The raw checked ids from state, used to determine cache validity
+    checkStrictly: boolean;
+    checkedIds: Set<string>;
+    halfCheckedIds: Set<string>;
+  } | null = null;
 
   constructor(
     public store: Store<RootState, Actions>,
@@ -418,6 +428,154 @@ export class TreeApi<T> {
     safeRun(this.props.onSelect, this.selectedNodes);
   }
 
+  /* Checked State */
+
+  get isCheckable() {
+    return this.props.checkable === true;
+  }
+
+  get checkedIds() {
+    return this.getCheckedState().checkedIds;
+  }
+
+  get checkedNodes() {
+    const nodes: NodeApi<T>[] = [];
+    utils.walk(this.root, (node) => {
+      if (!node.isRoot && this.checkedIds.has(node.id)) nodes.push(node);
+    });
+    return nodes;
+  }
+
+  get halfCheckedIds() {
+    return this.getCheckedState().halfCheckedIds;
+  }
+
+  get halfCheckedNodes() {
+    const halfCheckedIds = this.halfCheckedIds;
+    const nodes: NodeApi<T>[] = [];
+    utils.walk(this.root, (node) => {
+      if (!node.isRoot && halfCheckedIds.has(node.id)) nodes.push(node);
+    });
+    return nodes;
+  }
+
+  get hasNoChecked() {
+    return this.checkedIds.size === 0;
+  }
+
+  get hasOneChecked() {
+    return this.checkedIds.size === 1;
+  }
+
+  get hasMultipleChecked() {
+    return this.checkedIds.size > 1;
+  }
+
+  check(identity: Identity) {
+    if (!this.isCheckable) return;
+    const id = identifyNull(identity);
+    if (!id || id === ROOT_ID || this.isChecked(id)) return;
+    if (this.props.checkStrictly) {
+      this.dispatch(checked.add(id));
+    } else {
+      const ids = new Set(this.checkedIds);
+      this.addSubtreeIds(ids, id);
+      this.dispatch(checked.set(this.normalizeCheckedIds(ids)));
+    }
+    safeRun(this.props.onCheck, this.checkedNodes);
+  }
+
+  uncheck(identity: Identity) {
+    if (!this.isCheckable) return;
+    const id = identifyNull(identity);
+    if (!id) return;
+    if (this.props.checkStrictly) {
+      if (!this.isChecked(id)) return;
+      this.dispatch(checked.remove(id));
+    } else {
+      if (!this.isChecked(id) && !this.isHalfChecked(id)) return;
+      const ids = new Set(this.checkedIds);
+      this.removeSubtreeIds(ids, id);
+      this.removeAncestorIds(ids, id);
+      this.dispatch(checked.set(this.normalizeCheckedIds(ids)));
+    }
+    safeRun(this.props.onCheck, this.checkedNodes);
+  }
+
+  toggleCheck(identity: Identity) {
+    if (!this.isCheckable) return;
+    const id = identifyNull(identity);
+    if (!id) return;
+    return this.isChecked(id) ? this.uncheck(id) : this.check(id);
+  }
+
+  checkBatch(identities: readonly Identity[]) {
+    if (!this.isCheckable) return;
+    const ids = this.identifyIds(identities);
+    if (ids.length === 0) return;
+    if (this.props.checkStrictly) {
+      const uncheckedIds = ids.filter((id) => !this.isChecked(id));
+      if (uncheckedIds.length === 0) return;
+      this.dispatch(checked.add(uncheckedIds));
+    } else {
+      const nextIds = new Set(this.checkedIds);
+      ids.forEach((id) => this.addSubtreeIds(nextIds, id));
+      this.dispatch(checked.set(this.normalizeCheckedIds(nextIds)));
+    }
+    safeRun(this.props.onCheck, this.checkedNodes);
+  }
+
+  uncheckBatch(identities: readonly Identity[]) {
+    if (!this.isCheckable) return;
+    const ids = this.identifyIds(identities);
+    if (ids.length === 0) return;
+    if (this.props.checkStrictly) {
+      const checkedIds = ids.filter((id) => this.isChecked(id));
+      if (checkedIds.length === 0) return;
+      this.dispatch(checked.remove(checkedIds));
+    } else {
+      const nextIds = new Set(this.checkedIds);
+      ids.forEach((id) => {
+        this.removeSubtreeIds(nextIds, id);
+        this.removeAncestorIds(nextIds, id);
+      });
+      this.dispatch(checked.set(this.normalizeCheckedIds(nextIds)));
+    }
+    safeRun(this.props.onCheck, this.checkedNodes);
+  }
+
+  setChecked(identities: readonly Identity[], opts: { notify?: boolean } = {}) {
+    if (!this.isCheckable) return;
+    const ids = this.normalizeCheckedIds(new Set(this.identifyIds(identities)));
+    this.dispatch(checked.set(ids));
+    if (opts.notify !== false) safeRun(this.props.onCheck, this.checkedNodes);
+  }
+
+  uncheckAll() {
+    if (!this.isCheckable) return;
+    if (this.hasNoChecked) return;
+    this.dispatch(checked.clear());
+    safeRun(this.props.onCheck, this.checkedNodes);
+  }
+
+  checkAll() {
+    if (!this.isCheckable) return;
+    const ids = this.allNodeIds();
+    this.setChecked(ids);
+  }
+
+  isChecked(id?: string) {
+    if (!this.isCheckable) return false;
+    if (!id) return false;
+    return this.checkedIds.has(id);
+  }
+
+  isHalfChecked(id?: string) {
+    if (!this.isCheckable) return false;
+    if (!id) return false;
+    return this.halfCheckedIds.has(id);
+  }
+
   /* Drag and Drop */
 
   get cursorParentId() {
@@ -585,15 +743,15 @@ export class TreeApi<T> {
   }
 
   openAll() {
-    utils.walk(this.root, (node) => {
-      if (node.isInternal) node.open();
-    });
+    const ids = this.allInternalNodeIds().filter((id) => !this.isOpen(id));
+    this.batchSetOpen(ids, true);
+    ids.forEach((id) => safeRun(this.props.onToggle, id));
   }
 
   closeAll() {
-    utils.walk(this.root, (node) => {
-      if (node.isInternal) node.close();
-    });
+    const ids = this.allInternalNodeIds().filter((id) => this.isOpen(id));
+    this.batchSetOpen(ids, false);
+    ids.forEach((id) => safeRun(this.props.onToggle, id));
   }
 
   /* Scrolling */
@@ -728,6 +886,170 @@ export class TreeApi<T> {
     if (!id) return false;
     const { destinationParentId, destinationIndex } = this.state.nodes.drag;
     return id === destinationParentId && destinationIndex === null;
+  }
+
+  private identifyIds(identities: readonly Identity[]) {
+    return identities
+      .map(identifyNull)
+      .filter((id): id is string => !!id && id !== ROOT_ID);
+  }
+
+  private allNodeIds() {
+    const ids: string[] = [];
+    utils.walk(this.root, (node) => {
+      if (!node.isRoot) ids.push(node.id);
+    });
+    return ids;
+  }
+
+  private allInternalNodeIds() {
+    const ids: string[] = [];
+    utils.walk(this.root, (node) => {
+      if (!node.isRoot && node.isInternal) ids.push(node.id);
+    });
+    return ids;
+  }
+
+  private findNode(id: string) {
+    return utils.dfs(this.root, id);
+  }
+
+  // Collect the node and every descendant id in tree order.
+  private collectSubtreeIds(node: NodeApi<T>) {
+    const ids: string[] = [];
+    utils.walk(node, (n) => {
+      if (!n.isRoot) ids.push(n.id);
+    });
+    return ids;
+  }
+
+  // Add the target node and every descendant to a candidate checked set.
+  private addSubtreeIds(ids: Set<string>, id: string) {
+    const node = this.findNode(id);
+    if (!node || node.isRoot) return;
+    this.collectSubtreeIds(node).forEach((nodeId) => ids.add(nodeId));
+  }
+
+  // Remove the target node and every descendant from a candidate checked set.
+  private removeSubtreeIds(ids: Set<string>, id: string) {
+    const node = this.findNode(id);
+    if (!node) return;
+    this.collectSubtreeIds(node).forEach((nodeId) => ids.delete(nodeId));
+  }
+
+  // Remove ancestors so a later conduct pass can recompute them from children.
+  private removeAncestorIds(ids: Set<string>, id: string) {
+    let parent = this.findNode(id)?.parent;
+    while (parent && !parent.isRoot) {
+      ids.delete(parent.id);
+      parent = parent.parent;
+    }
+  }
+
+  private getCheckedState() {
+    if (!this.isCheckable) {
+      return { checkedIds: EMPTY_IDS, halfCheckedIds: EMPTY_IDS };
+    }
+
+    const sourceIds = this.state.nodes.checked.ids;
+    const checkStrictly = this.props.checkStrictly === true;
+
+    // If the source checked ids and checkStrictly mode are unchanged since the last call, return the cached checked state. This is an important optimization
+    // because computing checked state can be expensive in large trees, and this
+    // method is called frequently during render.
+    if (
+      this.checkedStateCache?.root === this.root &&
+      this.checkedStateCache.sourceIds === sourceIds &&
+      this.checkedStateCache.checkStrictly === checkStrictly
+    ) {
+      return this.checkedStateCache;
+    }
+
+    const checkedIds = this.normalizeCheckedIds(new Set(sourceIds));
+    const halfCheckedIds = this.getHalfCheckedIds(checkedIds);
+    this.checkedStateCache = {
+      root: this.root,
+      sourceIds,
+      checkStrictly,
+      checkedIds,
+      halfCheckedIds,
+    };
+    return this.checkedStateCache;
+  }
+
+  // Conduct checked ids into the canonical linked-tree checked state.
+  private normalizeCheckedIds(ids: Set<string>) {
+    if (this.props.checkStrictly) return ids;
+
+    // In linked mode, a checked internal node means its entire subtree is
+    // checked. Expand any parent ids into descendant ids before recomputing
+    // ancestor state.
+    utils.walk(this.root, (node) => {
+      if (!node.isRoot && ids.has(node.id)) {
+        this.collectSubtreeIds(node).forEach((nodeId) => ids.add(nodeId));
+      }
+    });
+
+    // Walk bottom-up so each parent is derived from final child state. A parent
+    // is checked only when every direct child is checked.
+    const visit = (node: NodeApi<T>) => {
+      node.children?.forEach(visit);
+      if (node.isRoot || node.isLeaf || !node.children?.length) return;
+
+      const allChildrenChecked = node.children.every((child) =>
+        ids.has(child.id),
+      );
+      if (allChildrenChecked) ids.add(node.id);
+      else ids.delete(node.id);
+    };
+    visit(this.root);
+
+    // Return ids in tree order instead of insertion order. This keeps public
+    // checkedIds stable across batch operations and normalization passes.
+    const orderedIds = new Set<string>();
+    utils.walk(this.root, (node) => {
+      if (!node.isRoot && ids.has(node.id)) orderedIds.add(node.id);
+    });
+    return orderedIds;
+  }
+
+  private getHalfCheckedIds(checkedIds: Set<string>) {
+    if (this.props.checkStrictly) return new Set<string>();
+
+    const ids = new Set<string>();
+    const descendantCheckedIds = new Set<string>();
+
+    // First pass: mark every node whose subtree contains at least one checked
+    // node. This pass intentionally does not decide half-checked yet.
+    const visit = (node: NodeApi<T>): boolean => {
+      const selfChecked = checkedIds.has(node.id);
+      let descendantChecked = false;
+
+      node.children?.forEach((child) => {
+        if (visit(child)) descendantChecked = true;
+      });
+
+      if (descendantChecked) descendantCheckedIds.add(node.id);
+
+      return selfChecked || descendantChecked;
+    };
+
+    visit(this.root);
+
+    // Second pass: a node is half-checked when it is internal, is not itself
+    // checked, and has at least one checked descendant. The walk preserves tree
+    // order for the public Set.
+    utils.walk(this.root, (node) => {
+      if (
+        !node.isRoot &&
+        node.isInternal &&
+        !checkedIds.has(node.id) &&
+        descendantCheckedIds.has(node.id)
+      ) {
+        ids.add(node.id);
+      }
+    });
+    return ids;
   }
 
   /* Tree Event Handlers */

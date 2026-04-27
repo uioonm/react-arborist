@@ -59,12 +59,12 @@ export function TreeProvider<T>({
   const listEl = useRef<HTMLDivElement | null>(null);
   const store = useRef<Store<RootState, Actions>>(
     // @ts-ignore
-    createStore(rootReducer, initialState(treeProps))
+    createStore(rootReducer, initialState(treeProps)),
   );
   const state = useSyncExternalStore<RootState>(
     store.current.subscribe,
     store.current.getState,
-    () => SERVER_STATE
+    () => SERVER_STATE,
   );
 
   /* The tree api object is stable. */
@@ -91,6 +91,13 @@ export function TreeProvider<T>({
     }
   }, [api.props.selection]);
 
+  /* Change checked state based on props */
+  useEffect(() => {
+    if (api.props.checkedIds !== undefined) {
+      api.setChecked(api.props.checkedIds, { notify: false });
+    }
+  }, [api.props.checkedIds, api.props.checkable]);
+
   /* Clear visability for filtered nodes */
   useEffect(() => {
     if (!api.props.searchTerm) {
@@ -109,7 +116,7 @@ export function TreeProvider<T>({
       <DataUpdatesContext.Provider value={updateCount.current}>
         <NodesContext.Provider value={state.nodes}>
           <DndContext.Provider value={state.dnd}>
-              {children}
+            {children}
           </DndContext.Provider>
         </NodesContext.Provider>
       </DataUpdatesContext.Provider>

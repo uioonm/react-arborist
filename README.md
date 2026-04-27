@@ -308,6 +308,8 @@ interface TreeProps<T> {
   openByDefault?: boolean;
   selectionFollowsFocus?: boolean;
   disableMultiSelection?: boolean;
+  checkable?: boolean;
+  checkStrictly?: boolean;
   disableEdit?: string | boolean | BoolFunc<T>;
   disableDrag?: string | boolean | BoolFunc<T>;
   disableDrop?:
@@ -322,12 +324,17 @@ interface TreeProps<T> {
   /* Event Handlers */
   onActivate?: (node: NodeApi<T>) => void;
   onSelect?: (nodes: NodeApi<T>[]) => void;
+  onCheck?: (nodes: NodeApi<T>[]) => void;
   onScroll?: (props: ListOnScrollProps) => void;
   onToggle?: (id: string) => void;
   onFocus?: (node: NodeApi<T>) => void;
 
   /* Selection */
   selection?: string;
+
+  /* Checked State */
+  checkedIds?: readonly string[];
+  initialCheckedIds?: readonly string[];
 
   /* Open State */
   initialOpenState?: OpenMap;
@@ -344,6 +351,22 @@ interface TreeProps<T> {
   onClick?: MouseEventHandler;
   onContextMenu?: MouseEventHandler;
   dndManager?: DragDropManager;
+}
+```
+
+### Drag and Drop Backend
+
+The tree creates one shared internal HTML5 backend when no React DnD provider exists above it. If your app already wraps the tree with `DndProvider`, the tree reuses that provider automatically instead of creating a second HTML5 backend.
+
+If you manage a custom drag-drop manager yourself, pass it through `dndManager` so the tree uses the same manager as the rest of your app. This is also the safest setup when testing a local `file:` package in an app that already uses React DnD.
+
+```tsx
+import { useDragDropManager } from "react-dnd";
+import { Tree } from "react-arborist";
+
+function ManagedTree(props) {
+  const dndManager = useDragDropManager();
+  return <Tree {...props} dndManager={dndManager} />;
 }
 ```
 
@@ -432,6 +455,14 @@ _node_.**isSelected**
 
 Returns true if node is selected.
 
+_node_.**isChecked**
+
+Returns true if node is checked.
+
+_node_.**isHalfChecked**
+
+Returns true if node is not checked, but one or more of its descendants are checked.
+
 _node_.**isSelectedStart**
 
 Returns true if node is the first of a contiguous group of selected nodes. Useful for styling.
@@ -464,6 +495,8 @@ Returns an object with all the above properties as keys and boolean values. Usef
 type NodeState = {
   isEditing: boolean;
   isDragging: boolean;
+  isChecked: boolean;
+  isHalfChecked: boolean;
   isSelected: boolean;
   isSelectedStart: boolean;
   isSelectedEnd: boolean;
@@ -511,6 +544,20 @@ Select this node while maintaining all other selections.
 _node_.**selectContiguous**()
 
 Deselect all nodes from the anchor node to the last selected node, the select all nodes from the anchor node to this node. The anchor changes to the focused node after calling _select()_ or _selectMulti()_.
+
+### Checked Methods
+
+_node_.**check**()
+
+Check this node.
+
+_node_.**uncheck**()
+
+Uncheck this node.
+
+_node_.**toggleCheck**()
+
+Toggle the checked state of this node.
 
 ### Activation Methods
 
@@ -671,6 +718,78 @@ Deselect all nodes.
 _tree_.**selectAll**()
 
 Select all nodes.
+
+### Checked Methods
+
+Set `checkable` to `true` to enable checked state. When enabled, checking a parent node checks all descendants, and checking all children checks the parent. Set `checkStrictly` to `true` to disable parent/child association.
+
+_tree_.**checkedIds** : _Set\<string\>_
+
+Returns a set of ids that are checked.
+
+_tree_.**checkedNodes** : _NodeApi[]_
+
+Returns an array of nodes that are checked.
+
+_tree_.**halfCheckedIds** : _Set\<string\>_
+
+Returns a set of ids that are half checked.
+
+_tree_.**halfCheckedNodes** : _NodeApi[]_
+
+Returns an array of nodes that are half checked.
+
+_tree_.**hasNoChecked** : boolean
+
+Returns true if nothing is checked in the tree.
+
+_tree_.**hasOneChecked** : boolean
+
+Returns true if there is only one checked node.
+
+_tree_.**hasMultipleChecked** : boolean
+
+Returns true if there is more than one checked node.
+
+_tree_.**isChecked**(_id_) : _boolean_
+
+Returns true if the node with _id_ is checked.
+
+_tree_.**isHalfChecked**(_id_) : _boolean_
+
+Returns true if the node with _id_ is half checked.
+
+_tree_.**check**(_id_)
+
+Check the node with _id_.
+
+_tree_.**uncheck**(_id_)
+
+Uncheck the node with _id_.
+
+_tree_.**toggleCheck**(_id_)
+
+Toggle the checked state of the node with _id_.
+
+_tree_.**checkBatch**(_ids_)
+
+Check the nodes with the given ids.
+
+_tree_.**uncheckBatch**(_ids_)
+
+Uncheck the nodes with the given ids.
+
+_tree_.**setChecked**(_ids_)
+
+Replace the checked state with the given ids.
+
+_tree_.**uncheckAll**()
+
+Uncheck all nodes.
+
+_tree_.**checkAll**()
+
+Check all nodes.
 
 ### Visibility
 

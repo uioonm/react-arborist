@@ -67,6 +67,14 @@ export class NodeApi<T = any> {
     return this.tree.isSelected(this.id);
   }
 
+  get isChecked() {
+    return this.tree.isChecked(this.id);
+  }
+
+  get isHalfChecked() {
+    return this.tree.isHalfChecked(this.id);
+  }
+
   get isOnlySelection() {
     return this.isSelected && this.tree.hasOneSelection;
   }
@@ -100,6 +108,8 @@ export class NodeApi<T = any> {
       isInternal: this.isInternal,
       isLeaf: this.isLeaf,
       isOpen: this.isOpen,
+      isChecked: this.isChecked,
+      isHalfChecked: this.isHalfChecked,
       isSelected: this.isSelected,
       isSelectedEnd: this.isSelectedEnd,
       isSelectedStart: this.isSelectedStart,
@@ -154,6 +164,18 @@ export class NodeApi<T = any> {
 
   selectContiguous() {
     this.tree.selectContiguous(this);
+  }
+
+  check() {
+    this.tree.check(this);
+  }
+
+  uncheck() {
+    this.tree.uncheck(this);
+  }
+
+  toggleCheck() {
+    this.tree.toggleCheck(this);
   }
 
   activate() {

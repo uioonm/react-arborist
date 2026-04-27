@@ -14,6 +14,9 @@ export const initialState = (props?: TreeProps<any>): RootState => ({
       destinationIndex: null,
     },
     selection: { ids: new Set(), anchor: null, mostRecent: null },
+    checked: {
+      ids: new Set(props?.checkedIds ?? props?.initialCheckedIds ?? []),
+    },
   },
   dnd: {
     cursor: { type: "none" },

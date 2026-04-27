@@ -5,7 +5,7 @@ import { ElementType, MouseEventHandler } from "react";
 import { ListOnScrollProps } from "react-window";
 import { NodeApi } from "../interfaces/node-api";
 import { OpenMap } from "../state/open-slice";
-import { useDragDropManager } from "react-dnd";
+import { DragDropManager } from "dnd-core";
 
 export interface TreeProps<T> {
   /* Data Options */
@@ -41,6 +41,8 @@ export interface TreeProps<T> {
   openByDefault?: boolean;
   selectionFollowsFocus?: boolean;
   disableMultiSelection?: boolean;
+  checkable?: boolean;
+  checkStrictly?: boolean;
   disableEdit?: string | boolean | BoolFunc<T>;
   disableDrag?: string | boolean | BoolFunc<T>;
   disableDrop?:
@@ -55,12 +57,17 @@ export interface TreeProps<T> {
   /* Event Handlers */
   onActivate?: (node: NodeApi<T>) => void;
   onSelect?: (nodes: NodeApi<T>[]) => void;
+  onCheck?: (nodes: NodeApi<T>[]) => void;
   onScroll?: (props: ListOnScrollProps) => void;
   onToggle?: (id: string) => void;
   onFocus?: (node: NodeApi<T>) => void;
 
   /* Selection */
   selection?: string;
+
+  /* Checked State */
+  checkedIds?: readonly string[];
+  initialCheckedIds?: readonly string[];
 
   /* Open State */
   initialOpenState?: OpenMap;
