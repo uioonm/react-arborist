@@ -7939,6 +7939,7 @@ __metadata:
     "@types/react": "npm:^18.2.43"
     "@types/react-window": "npm:^1.8.8"
     "@types/use-sync-external-store": "npm:^0.0.6"
+    dnd-core: "npm:14.0.1"
     jest: "npm:^29.7.0"
     npm-run-all: "npm:^4.1.5"
     react-dnd: "npm:^14.0.3"

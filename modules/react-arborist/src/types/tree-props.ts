@@ -76,5 +76,5 @@ export interface TreeProps<T> {
   dndRootElement?: globalThis.Node | null;
   onClick?: MouseEventHandler;
   onContextMenu?: MouseEventHandler;
-  dndManager?: ReturnType<typeof useDragDropManager>;
+  dndManager?: DragDropManager;
 }

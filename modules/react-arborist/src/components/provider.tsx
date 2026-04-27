@@ -1,5 +1,6 @@
 import {
   ReactNode,
+  useContext,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -17,7 +18,8 @@ import { TreeApi } from "../interfaces/tree-api";
 import { initialState } from "../state/initial";
 import { Actions, rootReducer, RootState } from "../state/root-reducer";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import { DndProvider } from "react-dnd";
+import { DndContext as ReactDndContext, DndProvider } from "react-dnd";
+import { createDragDropManager, DragDropManager } from "dnd-core";
 import { TreeProps } from "../types/tree-props";
 import { createStore, Store } from "redux";
 import { actions as visibility } from "../state/open-slice";
@@ -29,6 +31,24 @@ type Props<T> = {
 };
 
 const SERVER_STATE = initialState();
+let defaultDndManager: DragDropManager | null = null;
+const rootDndManagers = new WeakMap<globalThis.Node, DragDropManager>();
+
+function getDndManager(rootElement: globalThis.Node | null | undefined) {
+  if (rootElement) {
+    const existing = rootDndManagers.get(rootElement);
+    if (existing) return existing;
+
+    const manager = createDragDropManager(HTML5Backend, undefined, {
+      rootElement,
+    });
+    rootDndManagers.set(rootElement, manager);
+    return manager;
+  }
+
+  defaultDndManager = defaultDndManager ?? createDragDropManager(HTML5Backend);
+  return defaultDndManager;
+}
 
 export function TreeProvider<T>({
   treeProps,
@@ -78,21 +98,25 @@ export function TreeProvider<T>({
     }
   }, [api.props.searchTerm]);
 
-  return (
+  const parentDndManager = useContext(ReactDndContext).dragDropManager;
+  const dndManager =
+    treeProps.dndManager ??
+    parentDndManager ??
+    getDndManager(api.props.dndRootElement);
+
+  const tree = (
     <TreeApiContext.Provider value={api}>
       <DataUpdatesContext.Provider value={updateCount.current}>
         <NodesContext.Provider value={state.nodes}>
           <DndContext.Provider value={state.dnd}>
-            <DndProvider
-              backend={HTML5Backend}
-              options={{ rootElement: api.props.dndRootElement || undefined }}
-              {...(treeProps.dndManager && { manager: treeProps.dndManager })}
-            >
               {children}
-            </DndProvider>
           </DndContext.Provider>
         </NodesContext.Provider>
       </DataUpdatesContext.Provider>
     </TreeApiContext.Provider>
   );
+
+  if (parentDndManager === dndManager) return tree;
+
+  return <DndProvider manager={dndManager}>{tree}</DndProvider>;
 }
