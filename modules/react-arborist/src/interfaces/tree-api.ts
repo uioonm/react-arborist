@@ -12,7 +12,7 @@ import { edit } from "../state/edit-slice";
 import { Actions, RootState } from "../state/root-reducer";
 import { focus, treeBlur } from "../state/focus-slice";
 import { createRoot, ROOT_ID } from "../data/create-root";
-import { actions as visibility } from "../state/open-slice";
+import { actions as visibility, OpenMap } from "../state/open-slice";
 import { actions as selection } from "../state/selection-slice";
 import { actions as checked } from "../state/checked-slice";
 import { actions as dnd } from "../state/dnd-slice";
@@ -655,6 +655,16 @@ export class TreeApi<T> {
       .filter((id): id is string => !!id);
     if (ids.length === 0) return;
     this.dispatch(visibility.batchUpdate(ids, isOpen, this.isFiltered));
+  }
+
+  setOpenIds(identities: readonly Identity[]) {
+    const state: OpenMap = {};
+
+    this.identifyIds(identities).forEach((id) => {
+      state[id] = true;
+    });
+
+    this.dispatch(visibility.replace(state, this.isFiltered));
   }
 
   openAllUnder(identity: Identity) {

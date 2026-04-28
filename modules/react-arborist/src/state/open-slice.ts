@@ -18,6 +18,9 @@ export const actions = {
   clear(filtered: boolean) {
     return { type: "VISIBILITY_CLEAR" as const, filtered };
   },
+  replace(state: OpenMap, filtered: boolean) {
+    return { type: "VISIBILITY_REPLACE" as const, state, filtered };
+  },
   batchUpdate(ids: string[], isOpen: boolean, filtered: boolean) {
     return { type: "VISIBILITY_BATCH_UPDATE" as const, ids, isOpen, filtered };
   },
@@ -38,6 +41,8 @@ function openMapReducer(
     return { ...state, [action.id]: !prev };
   } else if (action.type === "VISIBILITY_CLEAR") {
     return {};
+  } else if (action.type === "VISIBILITY_REPLACE") {
+    return action.state;
   } else if (action.type === "VISIBILITY_BATCH_UPDATE") {
     return action.ids.reduce(
       (acc, id) => {
