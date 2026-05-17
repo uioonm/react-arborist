@@ -1,3 +1,9 @@
+# Version 3.7.0
+
+**Features**
+
+- `outerElementType` and `innerElementType` props on `Tree` for supplying custom react-window wrappers; `DropContainer`, `ListOuterElement`, and `ListInnerElement` are now exported so custom outers can compose the existing drop-target behavior (#339, originally #318)
+
 # Version 3.6.1
 
 **Fixes**
