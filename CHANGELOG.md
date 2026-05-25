@@ -1,3 +1,9 @@
+# Version 3.8.0
+
+**Features**
+
+- `rowHeight` prop on `Tree` now accepts a function `(node) => number` in addition to a fixed number, so each row can be sized from its node. Fixed-height trees keep using react-window's `FixedSizeList`; the function form uses `VariableSizeList`. Adds a `tree.redrawList()` API method to recompute row offsets when a `rowHeight` function's output changes for reasons the tree can't observe (#341, originally #238)
+
 # Version 3.7.0
 
 **Features**
