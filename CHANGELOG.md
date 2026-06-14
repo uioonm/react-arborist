@@ -1,3 +1,12 @@
+# Version 3.10.5
+
+**Fixes**
+
+- `TreeApi` methods (`select`, `focus`, `delete`, `edit`, node creation, etc.) now
+honor a custom `idAccessor` when given raw row data, instead of always reading
+`.id`. The identifier parameters and the `onCreate` return type accept your data
+type, so a custom accessor works end-to-end. (#366)
+
 # Version 3.10.4
 
 **Fixes**
