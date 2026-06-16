@@ -8,6 +8,8 @@ export const ListOuterElement = forwardRef(function Outer(
 ) {
   const { children, ...rest } = props;
   const tree = useTreeApi();
+  const paddingTop = tree.props.padding ?? tree.props.paddingTop ?? 0;
+  const paddingBottom = tree.props.padding ?? tree.props.paddingBottom ?? 0;
   return (
     <div
       // @ts-ignore
@@ -17,18 +19,18 @@ export const ListOuterElement = forwardRef(function Outer(
         if (e.currentTarget === e.target) tree.deselectAll();
       }}
     >
-      <DropContainer />
+      <DropContainer paddingGap={paddingTop + paddingBottom} />
       {children}
     </div>
   );
 });
 
-export const DropContainer = () => {
+export const DropContainer = ({ paddingGap }: { paddingGap: number }) => {
   const tree = useTreeApi();
   return (
     <div
       style={{
-        height: tree.rowTopPosition(tree.visibleNodes.length),
+        height: tree.rowTopPosition(tree.visibleNodes.length) + paddingGap,
         width: "100%",
         position: "absolute",
         left: "0",
