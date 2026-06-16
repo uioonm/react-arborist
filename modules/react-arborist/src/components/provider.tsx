@@ -1,13 +1,13 @@
 import {
   ReactNode,
-  useContext,
   useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
+  useContext,
 } from "react";
 import { useSyncExternalStore } from "use-sync-external-store/shim";
-import { FixedSizeList } from "react-window";
+import { FixedSizeList, VariableSizeList } from "react-window";
 import {
   DataUpdatesContext,
   DndContext,
@@ -55,7 +55,7 @@ export function TreeProvider<T>({
   imperativeHandle,
   children,
 }: Props<T>) {
-  const list = useRef<FixedSizeList | null>(null);
+  const list = useRef<FixedSizeList | VariableSizeList | null>(null);
   const listEl = useRef<HTMLDivElement | null>(null);
   const store = useRef<Store<RootState, Actions>>(
     // @ts-ignore
@@ -77,7 +77,15 @@ export function TreeProvider<T>({
   useMemo(() => {
     updateCount.current += 1;
     api.update(treeProps);
-  }, [...Object.values(treeProps), state.nodes.open]);
+  }, Object.values(treeProps));
+
+  /* Rebuild visible nodes when open state changes, without clobbering
+     props set imperatively via api.update(). Bumping updateCount keeps
+     DataUpdates consumers (e.g. DefaultContainer) in sync. */
+  useMemo(() => {
+    updateCount.current += 1;
+    api.update(api.props);
+  }, [state.nodes.open]);
 
   /* Expose the tree api */
   useImperativeHandle(imperativeHandle, () => api);
@@ -116,7 +124,18 @@ export function TreeProvider<T>({
       <DataUpdatesContext.Provider value={updateCount.current}>
         <NodesContext.Provider value={state.nodes}>
           <DndContext.Provider value={state.dnd}>
-            {children}
+            <DndProvider
+              {...(treeProps.dndManager
+                ? { manager: treeProps.dndManager }
+                : {
+                    backend: treeProps.dndBackend || HTML5Backend,
+                    options: {
+                      rootElement: api.props.dndRootElement || undefined,
+                    },
+                  })}
+            >
+              {children}
+            </DndProvider>
           </DndContext.Provider>
         </NodesContext.Provider>
       </DataUpdatesContext.Provider>

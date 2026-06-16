@@ -1,8 +1,13 @@
 import { EditResult } from "../types/handlers";
-import { Identity, IdObj } from "../types/utils";
+import { BoolFunc, Identity, IdObj } from "../types/utils";
 import { TreeProps } from "../types/tree-props";
 import { MutableRefObject } from "react";
-import { Align, FixedSizeList, ListOnItemsRenderedProps } from "react-window";
+import {
+  Align,
+  FixedSizeList,
+  ListOnItemsRenderedProps,
+  VariableSizeList,
+} from "react-window";
 import * as utils from "../utils";
 import { DefaultCursor } from "../components/default-cursor";
 import { DefaultRow } from "../components/default-row";
@@ -40,11 +45,13 @@ export class TreeApi<T> {
     checkedIds: Set<string>;
     halfCheckedIds: Set<string>;
   } | null = null;
+  /* Memoized prefix-sum of row heights; only used for variable heights. */
+  private rowOffsets: number[] | null = null;
 
   constructor(
     public store: Store<RootState, Actions>,
     public props: TreeProps<T>,
-    public list: MutableRefObject<FixedSizeList | null>,
+    public list: MutableRefObject<FixedSizeList | VariableSizeList | null>,
     public listEl: MutableRefObject<HTMLDivElement | null>,
   ) {
     /* Changes here must also be made in update() */
@@ -59,6 +66,18 @@ export class TreeApi<T> {
     this.root = createRoot<T>(this);
     this.visibleNodes = createList<T>(this);
     this.idToIndex = createIndex(this.visibleNodes);
+    this.rowOffsets = null;
+    /* Variable-height mode renders a VariableSizeList, which caches item
+       measurements by index and never invalidates them on its own. When the
+       visible nodes change (insert/remove/reorder), those cached sizes belong
+       to the wrong rows, so drop them. Fixed-height mode renders a
+       FixedSizeList (no cache, nothing to reset). update() runs during render,
+       so pass shouldForceUpdate=false: the in-progress render repaints the list
+       and a forceUpdate here would warn about setting state mid-render. */
+    const list = this.list.current;
+    if (list && "resetAfterIndex" in list) {
+      list.resetAfterIndex(0, false);
+    }
   }
 
   /* Store helpers */
@@ -89,8 +108,65 @@ export class TreeApi<T> {
     return this.props.indent ?? 24;
   }
 
+  /**
+   * The fixed row height. When a `rowHeight` function is supplied for variable
+   * heights, this returns the default (24); use `rowHeightAt(index)` to get the
+   * height of a specific row.
+   */
   get rowHeight() {
-    return this.props.rowHeight ?? 24;
+    return typeof this.props.rowHeight === "number" ? this.props.rowHeight : 24;
+  }
+
+  /**
+   * The height of the row at `index`, evaluating the `rowHeight` function if
+   * given. Falls back to the default height for an out-of-range index so this
+   * never feeds an invalid `0` to react-window's `itemSize`.
+   */
+  rowHeightAt = (index: number): number => {
+    const rowHeight = this.props.rowHeight;
+    if (typeof rowHeight === "function") {
+      const node = this.at(index);
+      return node ? rowHeight(node) : this.rowHeight;
+    }
+    return rowHeight ?? 24;
+  };
+
+  /** The pixel offset of the top of the row at `index` from the top of the list. */
+  rowTopPosition = (index: number): number => {
+    /* Fixed heights: O(1). */
+    if (typeof this.props.rowHeight !== "function") {
+      return index * this.rowHeight;
+    }
+    /* Variable heights: O(1) amortized via a memoized prefix sum. */
+    const offsets = this.getRowOffsets();
+    const clamped = Math.max(0, Math.min(index, offsets.length - 1));
+    return offsets[clamped];
+  };
+
+  /**
+   * Tell the underlying virtualized list to recompute row heights at and after
+   * `index`. Call this if a `rowHeight` function's output changes for reasons
+   * the tree can't observe (e.g. external state).
+   */
+  redrawList = (afterIndex: number = 0) => {
+    this.rowOffsets = null;
+    /* Only the VariableSizeList (function rowHeight) caches measurements; a
+       FixedSizeList has constant heights and nothing to recompute. */
+    const list = this.list.current;
+    if (list && "resetAfterIndex" in list) {
+      list.resetAfterIndex(Math.max(0, afterIndex));
+    }
+  };
+
+  /** Lazily-built prefix sum where offsets[i] is the top of row i. */
+  private getRowOffsets(): number[] {
+    if (this.rowOffsets) return this.rowOffsets;
+    const offsets: number[] = [0];
+    for (let i = 0; i < this.visibleNodes.length; i++) {
+      offsets.push(offsets[i] + this.rowHeightAt(i));
+    }
+    this.rowOffsets = offsets;
+    return offsets;
   }
 
   get overscanCount() {
@@ -106,6 +182,7 @@ export class TreeApi<T> {
       this.props.searchMatch ??
       ((node, term) => {
         const string = JSON.stringify(
+          // @ts-ignore
           Object.values(node.data as { [k: string]: unknown }),
         );
         return string.toLocaleLowerCase().includes(term.toLocaleLowerCase());
@@ -126,6 +203,29 @@ export class TreeApi<T> {
         "Data must contain an 'id' property or props.idAccessor must return a string",
       );
     return id;
+  }
+
+  /**
+   * Resolve an identifier to a node id. Public methods accept an id string, a
+   * NodeApi, or the raw row data; this is the one place that turns any of those
+   * into the string id used internally. Raw data is run through the configured
+   * `idAccessor` so a custom accessor (e.g. `uuid`) is honored everywhere, not
+   * just where nodes were built. A NodeApi already carries its accessor-derived
+   * `id`, so it is used directly rather than re-accessed (the accessor reads the
+   * underlying data, which a NodeApi does not expose under that key). Unlike
+   * `accessId`, an unresolved id comes back as `undefined` rather than throwing,
+   * preserving the previous behavior of the `id`-only lookup.
+   */
+  identify(identity: string | IdObj | T): string {
+    if (typeof identity === "string") return identity;
+    if (identity instanceof NodeApi) return identity.id;
+    const get = this.props.idAccessor || "id";
+    return utils.access<string>(identity, get);
+  }
+
+  identifyNull(identity: Identity | T): string | null {
+    if (identity === null || identity === undefined) return null;
+    return this.identify(identity);
   }
 
   /* Node Access */
@@ -179,8 +279,8 @@ export class TreeApi<T> {
     return this.visibleNodes.slice(start, end + 1);
   }
 
-  indexOf(id: string | null | IdObj) {
-    const key = utils.identifyNull(id);
+  indexOf(id: Identity | T) {
+    const key = this.identifyNull(id);
     if (!key) return null;
     return this.idToIndex[key];
   }
@@ -229,27 +329,33 @@ export class TreeApi<T> {
     }
   }
 
-  async delete(node: string | IdObj | null | string[] | IdObj[]) {
+  async delete(node: Identity | T | (string | IdObj | T)[]) {
     if (!node) return;
     const idents = Array.isArray(node) ? node : [node];
-    const ids = idents.map(identify);
+    const ids = idents.map((i) => this.identify(i));
     const nodes = ids.map((id) => this.get(id)!).filter((n) => !!n);
+    /* Guard against Math.min(...[]) === Infinity when no ids resolve to nodes. */
+    const fromIndex = nodes.length
+      ? Math.min(...nodes.map((n) => n.rowIndex ?? 0))
+      : 0;
     await safeRun(this.props.onDelete, { nodes, ids });
+    this.redrawList(fromIndex);
   }
 
-  edit(node: string | IdObj): Promise<EditResult> {
-    const id = identify(node);
+  edit(node: string | IdObj | T): Promise<EditResult> {
+    const id = this.identify(node);
     this.resolveEdit({ cancelled: true });
     this.scrollTo(id);
     this.dispatch(edit(id));
+    this.redrawList(this.get(id)?.rowIndex ?? 0);
     return new Promise((resolve) => {
       TreeApi.editPromise = resolve;
     });
   }
 
-  async submit(identity: Identity, value: string) {
+  async submit(identity: Identity | T, value: string) {
     if (!identity) return;
-    const id = identify(identity);
+    const id = this.identify(identity);
     await safeRun(this.props.onRename, {
       id,
       name: value,
@@ -257,17 +363,19 @@ export class TreeApi<T> {
     });
     this.dispatch(edit(null));
     this.resolveEdit({ cancelled: false, value });
+    this.redrawList(this.get(id)?.rowIndex ?? 0);
     setTimeout(() => this.onFocus()); // Return focus to element;
   }
 
   reset() {
     this.dispatch(edit(null));
     this.resolveEdit({ cancelled: true });
+    this.redrawList();
     setTimeout(() => this.onFocus()); // Return focus to element;
   }
 
-  activate(id: string | IdObj | null) {
-    const node = this.get(identifyNull(id));
+  activate(id: Identity | T) {
+    const node = this.get(this.identifyNull(id));
     if (!node) return;
     safeRun(this.props.onActivate, node);
   }
@@ -293,7 +401,7 @@ export class TreeApi<T> {
     return nodes;
   }
 
-  focus(node: Identity, opts: { scroll?: boolean } = {}) {
+  focus(node: Identity | T, opts: { scroll?: boolean } = {}) {
     if (!node) return;
     /* Focus is responsible for scrolling, while selection is
      * responsible for focus. If selectionFollowsFocus, then
@@ -301,7 +409,7 @@ export class TreeApi<T> {
     if (this.props.selectionFollowsFocus) {
       this.select(node);
     } else {
-      this.dispatch(focus(identify(node)));
+      this.dispatch(focus(this.identify(node)));
       if (opts.scroll !== false) this.scrollTo(node);
       if (this.focusedNode) safeRun(this.props.onFocus, this.focusedNode);
     }
@@ -333,37 +441,48 @@ export class TreeApi<T> {
     this.focus(this.at(index));
   }
 
-  select(node: Identity, opts: { align?: Align; focus?: boolean } = {}) {
+  select(node: Identity | T, opts: { align?: Align; focus?: boolean } = {}) {
     if (!node) return;
     const changeFocus = opts.focus !== false;
-    const id = identify(node);
+    const id = this.identify(node);
     if (changeFocus) this.dispatch(focus(id));
-    this.dispatch(selection.only(id));
-    this.dispatch(selection.anchor(id));
-    this.dispatch(selection.mostRecent(id));
+    if (this.get(id)?.isSelectable) {
+      this.setSelection({
+        ids: [id],
+        anchor: id,
+        mostRecent: id,
+      });
+    }
     this.scrollTo(id, opts.align);
     if (this.focusedNode && changeFocus) {
       safeRun(this.props.onFocus, this.focusedNode);
     }
-    safeRun(this.props.onSelect, this.selectedNodes);
   }
 
-  deselect(node: Identity) {
+  deselect(node: Identity | T) {
     if (!node) return;
-    const id = identify(node);
+    const id = this.identify(node);
     this.dispatch(selection.remove(id));
     safeRun(this.props.onSelect, this.selectedNodes);
   }
 
-  selectMulti(identity: Identity) {
-    const node = this.get(identifyNull(identity));
+  selectMulti(
+    identity: Identity | T,
+    opts: { align?: Align; focus?: boolean } = {},
+  ) {
+    const node = this.get(this.identifyNull(identity));
     if (!node) return;
-    this.dispatch(focus(node.id));
-    this.dispatch(selection.add(node.id));
-    this.dispatch(selection.anchor(node.id));
-    this.dispatch(selection.mostRecent(node.id));
-    this.scrollTo(node);
-    if (this.focusedNode) safeRun(this.props.onFocus, this.focusedNode);
+    const changeFocus = opts.focus !== false;
+    if (changeFocus) this.dispatch(focus(node.id));
+    if (node.isSelectable) {
+      this.dispatch(selection.add(node.id));
+      this.dispatch(selection.anchor(node.id));
+      this.dispatch(selection.mostRecent(node.id));
+    }
+    this.scrollTo(node, opts.align);
+    if (this.focusedNode && changeFocus) {
+      safeRun(this.props.onFocus, this.focusedNode);
+    }
     safeRun(this.props.onSelect, this.selectedNodes);
   }
 
@@ -387,43 +506,57 @@ export class TreeApi<T> {
     safeRun(this.props.onSelect, this.selectedNodes);
   }
 
-  selectContiguous(identity: Identity) {
+  selectContiguous(identity: Identity | T) {
     if (!identity) return;
-    const id = identify(identity);
-    const { anchor, mostRecent } = this.state.nodes.selection;
+    const id = this.identify(identity);
     this.dispatch(focus(id));
-    this.dispatch(selection.remove(this.nodesBetween(anchor, mostRecent)));
-    this.dispatch(selection.add(this.nodesBetween(anchor, identifyNull(id))));
-    this.dispatch(selection.mostRecent(id));
+    if (this.get(id)?.isSelectable) {
+      const { anchor, mostRecent } = this.state.nodes.selection;
+      const selectableNodes = this.filterSelectableNodes(
+        this.nodesBetween(anchor, this.identifyNull(id)),
+      );
+      this.dispatch(selection.remove(this.nodesBetween(anchor, mostRecent)));
+      this.dispatch(selection.add(selectableNodes));
+      this.dispatch(selection.mostRecent(id));
+    }
     this.scrollTo(id);
     if (this.focusedNode) safeRun(this.props.onFocus, this.focusedNode);
     safeRun(this.props.onSelect, this.selectedNodes);
   }
 
   deselectAll() {
+    // setSelection fires onSelect; don't fire it again here (see #332).
     this.setSelection({ ids: [], anchor: null, mostRecent: null });
-    safeRun(this.props.onSelect, this.selectedNodes);
   }
 
   selectAll() {
+    const allSelectableNodes = this.filterSelectableNodes(
+      Object.keys(this.idToIndex),
+    );
+    // setSelection fires onSelect; don't fire it again here (see #332).
     this.setSelection({
-      ids: Object.keys(this.idToIndex),
-      anchor: this.firstNode,
-      mostRecent: this.lastNode,
+      ids: allSelectableNodes,
+      anchor: allSelectableNodes[0] ?? null,
+      mostRecent: allSelectableNodes[allSelectableNodes.length - 1] ?? null,
     });
     this.dispatch(focus(this.lastNode?.id));
     if (this.focusedNode) safeRun(this.props.onFocus, this.focusedNode);
-    safeRun(this.props.onSelect, this.selectedNodes);
+  }
+
+  private filterSelectableNodes(nodes: (IdObj | string)[]) {
+    return nodes
+      .map((n) => this.get(this.identify(n)))
+      .filter((n): n is NodeApi<T> => !!n && n.isSelectable);
   }
 
   setSelection(args: {
-    ids: (IdObj | string)[] | null;
-    anchor: IdObj | string | null;
-    mostRecent: IdObj | string | null;
+    ids: (IdObj | string | T)[] | null;
+    anchor: Identity | T;
+    mostRecent: Identity | T;
   }) {
-    const ids = new Set(args.ids?.map(identify));
-    const anchor = identifyNull(args.anchor);
-    const mostRecent = identifyNull(args.mostRecent);
+    const ids = new Set(args.ids?.map((i) => this.identify(i)));
+    const anchor = this.identifyNull(args.anchor);
+    const mostRecent = this.identifyNull(args.mostRecent);
     this.dispatch(selection.set({ ids, anchor, mostRecent }));
     safeRun(this.props.onSelect, this.selectedNodes);
   }
@@ -639,6 +772,18 @@ export class TreeApi<T> {
     }
   }
 
+  drop() {
+    const { parentId, index, dragIds } = this.state.dnd;
+    safeRun(this.props.onMove, {
+      dragIds,
+      parentId: parentId === ROOT_ID ? null : parentId,
+      index: index === null ? 0 : index, // When it's null it was dropped over a folder
+      dragNodes: this.dragNodes,
+      parentNode: this.get(parentId),
+    });
+    this.open(parentId);
+  }
+
   hideCursor() {
     this.dispatch(dnd.cursor({ type: "none" }));
   }
@@ -703,38 +848,41 @@ export class TreeApi<T> {
     );
   }
 
-  open(identity: Identity) {
-    const id = identifyNull(identity);
+  open(identity: Identity | T, redraw: boolean = true) {
+    const id = this.identifyNull(identity);
     if (!id) return;
     if (this.isOpen(id)) return;
     this.dispatch(visibility.open(id, this.isFiltered));
+    if (redraw) this.redrawList(this.get(id)?.rowIndex ?? 0);
     safeRun(this.props.onToggle, id);
   }
 
-  close(identity: Identity) {
-    const id = identifyNull(identity);
+  close(identity: Identity | T, redraw: boolean = true) {
+    const id = this.identifyNull(identity);
     if (!id) return;
     if (!this.isOpen(id)) return;
     this.dispatch(visibility.close(id, this.isFiltered));
+    if (redraw) this.redrawList(this.get(id)?.rowIndex ?? 0);
     safeRun(this.props.onToggle, id);
   }
 
-  toggle(identity: Identity) {
-    const id = identifyNull(identity);
+  toggle(identity: Identity | T) {
+    const id = this.identifyNull(identity);
     if (!id) return;
     return this.isOpen(id) ? this.close(id) : this.open(id);
   }
 
-  openParents(identity: Identity) {
-    const id = identifyNull(identity);
+  openParents(identity: Identity | T) {
+    const id = this.identifyNull(identity);
     if (!id) return;
     const node = utils.dfs(this.root, id);
     let parent = node?.parent;
 
     while (parent) {
-      this.open(parent.id);
+      this.open(parent.id, false);
       parent = parent.parent;
     }
+    this.redrawList();
   }
 
   openSiblings(node: NodeApi<T>) {
@@ -745,9 +893,11 @@ export class TreeApi<T> {
       const isOpen = node.isOpen;
       for (let sibling of parent.children) {
         if (sibling.isInternal) {
-          isOpen ? this.close(sibling.id) : this.open(sibling.id);
+          if (isOpen) this.close(sibling.id, false);
+          else this.open(sibling.id, false);
         }
       }
+      this.redrawList();
       this.scrollTo(this.focusedNode);
     }
   }
@@ -759,66 +909,24 @@ export class TreeApi<T> {
   }
 
   closeAll() {
-    const ids = this.allInternalNodeIds().filter((id) => this.isOpen(id));
-    this.batchSetOpen(ids, false);
-    ids.forEach((id) => safeRun(this.props.onToggle, id));
+    utils.walk(this.root, (node) => {
+      if (node.isInternal) this.close(node.id, false);
+    });
+    this.redrawList();
   }
 
   /* Scrolling */
 
-  scrollTo(identity: Identity, align: Align = "smart") {
+  scrollTo(identity: Identity | T, align: Align = "smart") {
     if (!identity) return;
-    const id = identify(identity);
+    const id = this.identify(identity);
     this.openParents(id);
     return utils
       .waitFor(() => id in this.idToIndex)
       .then(() => {
         const index = this.idToIndex[id];
         if (index === undefined) return;
-        let basePosition;
-        const containerHeight = this.props.height ?? 0;
-        const itemSize = this.props.rowHeight ?? 0;
-        // 合并 padding 相关的计算
-        const verticalPadding =
-          (this.props.padding ?? 0) * 2 ||
-          (this.props.paddingBottom ?? 0) + (this.props.paddingTop ?? 0);
-        const itemCount = this.visibleNodes?.length ?? 0;
-        switch (align) {
-          case "start":
-            basePosition = index * itemSize;
-            break;
-          case "end":
-            basePosition = index * itemSize + itemSize - containerHeight;
-            break;
-          case "center":
-            basePosition =
-              index * itemSize + itemSize / 2 - containerHeight / 2;
-            break;
-          // smart/auto
-          default:
-            // @ts-ignore 忽略state.scrollOffset的类型检查
-            const currentScrollTop = this.list.current?.state.scrollOffset ?? 0;
-            // 计算节点的位置
-            const nodePosition = index * itemSize;
-            // 判断节点是否在可视区域内
-            const isVisible =
-              nodePosition >= currentScrollTop - itemSize - verticalPadding &&
-              nodePosition <=
-                currentScrollTop + containerHeight + verticalPadding + itemSize;
-            // 如果节点不在可视区域内,才进行滚动
-            if (!isVisible) {
-              basePosition =
-                index * itemSize + itemSize / 2 - containerHeight / 2;
-            }
-            break;
-        }
-        let targetPosition = basePosition;
-        if (targetPosition) {
-          const maxScrollTop =
-            itemCount * itemSize - containerHeight + verticalPadding; // 最大可滚动位置，考虑padding
-          targetPosition = Math.max(0, Math.min(targetPosition, maxScrollTop));
-          this.list.current?.scrollTo(targetPosition);
-        }
+        this.list.current?.scrollToItem(index, align);
       })
       .catch(() => {
         // Id: ${id} never appeared in the list.
@@ -868,17 +976,26 @@ export class TreeApi<T> {
   }
 
   isEditable(data: T) {
-    const check = this.props.disableEdit || (() => false);
-    return !utils.access(data, check);
+    return this.isActionPossible(data, this.props.disableEdit);
   }
 
   isDraggable(data: T) {
-    const check = this.props.disableDrag || (() => false);
-    return !utils.access(data, check);
+    return this.isActionPossible(data, this.props.disableDrag);
   }
 
-  isDragging(node: string | IdObj | null) {
-    const id = identifyNull(node);
+  isSelectable(data: T) {
+    return this.isActionPossible(data, this.props.disableSelect);
+  }
+
+  private isActionPossible(
+    data: T,
+    disabler: string | boolean | BoolFunc<T> = () => false,
+  ) {
+    return !utils.access(data, disabler);
+  }
+
+  isDragging(node: Identity | T) {
+    const id = this.identifyNull(node);
     if (!id) return false;
     return this.state.nodes.drag.id === id;
   }
@@ -891,8 +1008,8 @@ export class TreeApi<T> {
     return this.matchFn(node);
   }
 
-  willReceiveDrop(node: string | IdObj | null) {
-    const id = identifyNull(node);
+  willReceiveDrop(node: Identity | T) {
+    const id = this.identifyNull(node);
     if (!id) return false;
     const { destinationParentId, destinationIndex } = this.state.nodes.drag;
     return id === destinationParentId && destinationIndex === null;

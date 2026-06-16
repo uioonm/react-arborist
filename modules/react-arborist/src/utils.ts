@@ -49,10 +49,7 @@ export function dfs(node: NodeApi<any>, id: string): NodeApi<any> | null {
   return null;
 }
 
-export function walk(
-  node: NodeApi<any>,
-  fn: (node: NodeApi<any>) => void
-): void {
+export function walk(node: NodeApi<any>, fn: (node: NodeApi<any>) => void): void {
   fn(node);
   if (node.children) {
     for (let child of node.children) {
@@ -110,15 +107,12 @@ function prevItem(list: HTMLElement[], index: number) {
 function getFocusable(target: HTMLElement) {
   return Array.from(
     document.querySelectorAll(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled]), details:not([disabled]), summary:not(:disabled)'
-    )
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled]), details:not([disabled]), summary:not(:disabled)',
+    ),
   ).filter((e) => e === target || !target.contains(e)) as HTMLElement[];
 }
 
-export function access<T = boolean>(
-  obj: any,
-  accessor: string | boolean | Function
-): T {
+export function access<T = boolean>(obj: any, accessor: string | boolean | Function): T {
   if (typeof accessor === "boolean") return accessor as unknown as T;
   if (typeof accessor === "string") return obj[accessor] as T;
   return accessor(obj) as T;
@@ -171,6 +165,84 @@ export function getInsertIndex(tree: TreeApi<any>) {
   if (focus.isOpen) return 0;
   if (focus.parent) return focus.childIndex + 1;
   return 0;
+}
+
+export type TreeLineChars = {
+  last: string;
+  middle: string;
+  pipe: string;
+  blank: string;
+};
+
+const defaultTreeLineChars: TreeLineChars = {
+  last: "└ ",
+  middle: "├ ",
+  pipe: "│ ",
+  blank: "\u3000 ",
+};
+
+/**
+ * Generate a tree-line prefix string for a node.
+ *
+ * Returns characters like `├ `, `└ `, `│` that visually connect
+ * parent and child nodes, similar to the Unix `tree` command.
+ *
+ * **Styling note:** The prefix uses Box Drawing characters (`│`, `├`, `└`)
+ * which require a monospace font for correct alignment. Wrap the prefix
+ * in a `<span>` with `fontFamily: "monospace"` and use a consistent
+ * `fontSize` (e.g. 14–16px). Inherited `line-height` or `font-size`
+ * from parent elements can cause misalignment.
+ *
+ * @example Basic usage
+ * ```tsx
+ * function MyNode({ node, style }: NodeRendererProps<MyData>) {
+ *   return (
+ *     <div style={style}>
+ *       <span style={{ fontFamily: "monospace", fontSize: 14 }}>
+ *         {getTreeLinePrefix(node)}
+ *       </span>
+ *       {node.data.name}
+ *     </div>
+ *   );
+ * }
+ * ```
+ *
+ * @example With folder/file icons
+ * ```tsx
+ * function MyNode({ node, style }: NodeRendererProps<MyData>) {
+ *   const icon = node.isLeaf ? "📄" : node.isOpen ? "📂" : "📁";
+ *   return (
+ *     <div style={style}>
+ *       <span style={{ fontFamily: "monospace", fontSize: 16 }}>
+ *         {getTreeLinePrefix(node)}
+ *       </span>
+ *       {icon} {node.data.name}
+ *     </div>
+ *   );
+ * }
+ * ```
+ *
+ * @example Custom characters
+ * ```tsx
+ * // ASCII-only style
+ * getTreeLinePrefix(node, { last: "`- ", middle: "|- ", pipe: "|", blank: "  " })
+ * ```
+ */
+export function getTreeLinePrefix(node: NodeApi<any>, chars: Partial<TreeLineChars> = {}): string {
+  const c = { ...defaultTreeLineChars, ...chars };
+  if (node.level === 0) return "";
+
+  const isLast = node.nextSibling === null;
+  let prefix = isLast ? c.last : c.middle;
+
+  let ancestor = node.parent;
+  while (ancestor && ancestor.level > 0) {
+    const isAncestorLast = ancestor.nextSibling === null;
+    prefix = (isAncestorLast ? c.blank : c.pipe) + prefix;
+    ancestor = ancestor.parent;
+  }
+
+  return prefix;
 }
 
 export function getInsertParentId(tree: TreeApi<any>) {

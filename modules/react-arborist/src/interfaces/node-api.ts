@@ -1,6 +1,5 @@
 import React from "react";
 import { TreeApi } from "./tree-api";
-import { IdObj } from "../types/utils";
 import { ROOT_ID } from "../data/create-root";
 
 type Params<T> = {
@@ -57,6 +56,10 @@ export class NodeApi<T = any> {
 
   get isEditable() {
     return this.tree.isEditable(this.data);
+  }
+
+  get isSelectable() {
+    return this.tree.isSelectable(this.data);
   }
 
   get isEditing() {
@@ -219,8 +222,9 @@ export class NodeApi<T = any> {
   }
 
   handleClick = (e: React.MouseEvent) => {
-    if (e.metaKey && !this.tree.props.disableMultiSelection) {
-      this.isSelected ? this.deselect() : this.selectMulti();
+    if ((e.metaKey || e.ctrlKey) && !this.tree.props.disableMultiSelection) {
+      if (this.isSelected) this.deselect();
+      else this.selectMulti();
     } else if (e.shiftKey && !this.tree.props.disableMultiSelection) {
       this.selectContiguous();
     } else {

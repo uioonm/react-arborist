@@ -245,15 +245,17 @@ function App() {
 
 ### Dynamic sizing
 
-You can add a ref to it with this package [ZeeCoder/use-resize-observer](https://github.com/ZeeCoder/use-resize-observer)
+You can add a ref to it with this package [Pmndrs/react-use-measure](https://github.com/pmndrs/react-use-measure)
  
-That hook will return the height and width of the parent whenever it changes. You then pass these numbers to the Tree.
+That hook will measure the boundaries (for instance width, height, top, left) of a view you reference. Then you pass the width and the height to the Tree.
 
 ```js
-const { ref, width, height } = useResizeObserver();
+import useMeasure from "react-use-measure";
+
+const [ref, bounds] = useMeasure();
  
 <div className="parent" ref={ref}>
-  <Tree height={height} width={width} />
+  <Tree height={bounds.height} width={bounds.width} />
 </div>
 ```
 
@@ -268,6 +270,8 @@ const { ref, width, height } = useResizeObserver();
 - Interfaces
   - [Node API](#node-api-reference)
   - [Tree API](#tree-api-reference)
+- Utilities
+  - [getTreeLinePrefix](#gettreelineprefix)
 
 ## Tree Component Props
 
@@ -303,13 +307,14 @@ interface TreeProps<T> {
   padding?: number;
 
   /* Config */
-  childrenAccessor?: string | ((d: T) => T[] | null);
+  childrenAccessor?: string | ((d: T) => readonly T[] | null);
   idAccessor?: string | ((d: T) => string);
   openByDefault?: boolean;
   selectionFollowsFocus?: boolean;
   disableMultiSelection?: boolean;
   checkable?: boolean;
   checkStrictly?: boolean;
+  disableSelect?: string | boolean | BoolFunc<T>;
   disableEdit?: string | boolean | BoolFunc<T>;
   disableDrag?: string | boolean | BoolFunc<T>;
   disableDrop?:
@@ -350,25 +355,27 @@ interface TreeProps<T> {
   dndRootElement?: globalThis.Node | null;
   onClick?: MouseEventHandler;
   onContextMenu?: MouseEventHandler;
-  dndManager?: DragDropManager;
+  dndBackend?: Extract<
+    DndProviderProps<unknown, unknown>,
+    { backend: unknown }
+  >["backend"];
+  dndManager?: ReturnType<typeof useDragDropManager>;
+  dragType?: string | ((node: NodeApi<T>) => string);
 }
 ```
 
-### Drag and Drop Backend
+### Dragging Nodes to External Drop Targets
 
-The tree creates one shared internal HTML5 backend when no React DnD provider exists above it. If your app already wraps the tree with `DndProvider`, the tree reuses that provider automatically instead of creating a second HTML5 backend.
-
-If you manage a custom drag-drop manager yourself, pass it through `dndManager` so the tree uses the same manager as the rest of your app. This is also the safest setup when testing a local `file:` package in an app that already uses React DnD.
+The react-dnd drag item created for each row carries the dragged node's `data`, so a drop target rendered outside the tree can read it:
 
 ```tsx
-import { useDragDropManager } from "react-dnd";
-import { Tree } from "react-arborist";
-
-function ManagedTree(props) {
-  const dndManager = useDragDropManager();
-  return <Tree {...props} dndManager={dndManager} />;
-}
+const [, drop] = useDrop(() => ({
+  accept: "NODE",
+  drop: (item) => console.log(item.data), // the dragged node's data
+}));
 ```
+
+The tree and your external target must share one react-dnd backend. Wrap both in a single `DndProvider` and pass its manager to the tree via the `dndManager` prop. By default rows advertise the `"NODE"` item type; set the `dragType` prop (a fixed string, or a function of the node) to advertise a custom type instead. Note that the tree's own drop targets only accept `"NODE"`, so a row given a custom `dragType` is no longer reorderable within the tree.
 
 ## Row Component Props
 
@@ -695,17 +702,17 @@ _tree_.**isSelected**(_id_) : _boolean_
 
 Returns true if the node with _id_ is selected.
 
-_tree_.**select**(_id_)
+_tree_.**select**(_id_, _[opts]_)
 
-Select only the node with _id_.
+Select only the node with _id_. Accepts an optional options object: `{ align?: "auto" | "smart" | "center" | "end" | "start"; focus?: boolean }`. `align` is forwarded to the scroll behavior; passing `focus: false` suppresses the focus change and the `onFocus` callback.
 
 _tree_.**deselect**(_id_)
 
 Deselect the node with _id_.
 
-_tree_.**selectMulti**(_id_)
+_tree_.**selectMulti**(_id_, _[opts]_)
 
-Add to the selection the node with _id_.
+Add to the selection the node with _id_. Accepts the same options object as `select`.
 
 _tree_.**selectContiguous**(_id_)
 
@@ -858,6 +865,59 @@ Returns all the props that were passed to the _\<Tree\>_ component.
 _tree_.**root** : _NodeApi_
 
 Returns the root _NodeApi_ instance. Its children are the Node representations of the _data_ prop array.
+
+## Utilities
+
+### getTreeLinePrefix
+
+Generates a tree-line prefix string (using Unix `tree`-style box-drawing characters like `├`, `└`, `│`) for a given node. Useful when you want ASCII/Unicode connector lines in a custom node renderer.
+
+```ts
+function getTreeLinePrefix(
+  node: NodeApi<any>,
+  chars?: Partial<TreeLineChars>
+): string;
+
+type TreeLineChars = {
+  last: string;   // default: "└ "
+  middle: string; // default: "├ "
+  pipe: string;   // default: "│ "
+  blank: string;  // default: "\u3000 "
+};
+```
+
+Wrap the prefix in a monospace span so the connectors line up:
+
+```tsx
+import { Tree, getTreeLinePrefix } from "react-arborist";
+
+function Node({ node, style }) {
+  return (
+    <div style={style}>
+      <span style={{ fontFamily: "monospace" }}>{getTreeLinePrefix(node)}</span>
+      {node.data.name}
+    </div>
+  );
+}
+```
+
+Pass a partial `chars` object to override any of the default characters (e.g. for an ASCII-only style).
+
+## Contributing
+
+The package ships with Jest tests under `modules/react-arborist/src/**/*.test.ts?(x)`.
+From the package directory you can run:
+
+```bash
+cd modules/react-arborist
+yarn test
+```
+
+Good starting points:
+
+- `src/interfaces/tree-api.test.ts` for pure API behavior
+- `src/components/provider.test.tsx` for rendered tree behavior
+- `src/dnd/drag-hook.test.ts` for drag-and-drop behavior
 
 ## Author
 

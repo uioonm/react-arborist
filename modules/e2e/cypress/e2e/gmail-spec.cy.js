@@ -112,7 +112,7 @@ describe("Testing the Gmail Demo", () => {
   it("drags and drops in its list", () => {
     dragAndDrop(
       cy.get("@item").contains("Inbox").first(),
-      cy.get("@item").contains("Sent").first()
+      cy.get("@item").contains("Sent").first(),
     );
 
     cy.get("@item").contains("Inbox").click();
@@ -122,7 +122,7 @@ describe("Testing the Gmail Demo", () => {
   it("drags and drops into folder", () => {
     dragAndDrop(
       cy.get("@item").contains("Starred").first(),
-      cy.get("@item").contains("Social").first()
+      cy.get("@item").contains("Social").first(),
     );
     cy.get("@item").contains("Starred").click();
     cy.focused().invoke("index").should("eq", 11);
@@ -131,7 +131,7 @@ describe("Testing the Gmail Demo", () => {
   it("prevents Inbox from Dragging into Categories", () => {
     dragAndDrop(
       cy.get("@item").contains("Inbox").first(),
-      cy.get("@item").contains("Social").first()
+      cy.get("@item").contains("Social").first(),
     );
     cy.get("@item").contains("Inbox").click();
     cy.focused().invoke("index").should("eq", 0);
@@ -142,6 +142,28 @@ describe("Testing the Gmail Demo", () => {
     cy.get("@item").should("have.length", 3);
     cy.get("@item").contains("Categories").click(); // collapses
     cy.get("@item").should("have.length", 1);
+  });
+
+  it("can select inbox but not categories", () => {
+    cy.get("@item").contains("Inbox").click();
+    cy.focused().should("have.attr", "aria-selected", "true");
+    cy.get("@item").contains("Categories").click();
+    cy.focused().should("have.attr", "aria-selected", "false");
+    // Existing selection on Inbox is preserved when clicking an unselectable node
+    cy.get("@item")
+      .contains("Inbox")
+      .parents("[role=treeitem]")
+      .should("have.attr", "aria-selected", "true");
+  });
+
+  it("select all does not select categories or spam", () => {
+    cy.get("@item").contains("Inbox").click();
+    cy.focused().type("{meta}a");
+    cy.get("[aria-selected='true']")
+      .should("not.contain.text", "Categories")
+      .should("not.contain.text", "Spam")
+      .should("contain.text", "Inbox")
+      .should("have.length", TOTAL_ITEMS - 2);
   });
 });
 

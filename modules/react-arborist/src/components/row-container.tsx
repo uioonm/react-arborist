@@ -9,10 +9,7 @@ type Props = {
   index: number;
 };
 
-export const RowContainer = React.memo(function RowContainer<T>({
-  index,
-  style,
-}: Props) {
+export const RowContainer = React.memo(function RowContainer<T>({ index, style }: Props) {
   /* When will the <Row> will re-render.
    *
    * The row component is memo'd so it will only render
@@ -42,7 +39,7 @@ export const RowContainer = React.memo(function RowContainer<T>({
       el.current = n;
       dropRef(n);
     },
-    [dropRef]
+    [dropRef],
   );
 
   const indent = tree.indent * node.level;
@@ -50,9 +47,15 @@ export const RowContainer = React.memo(function RowContainer<T>({
   const rowStyle = useMemo(
     () => ({
       ...style,
-      position: "static",
+      top: parseFloat(style.top as string) + (tree.props.padding ?? tree.props.paddingTop ?? 0),
+      // react-window gives the row width: 100% of the viewport. When a deeply
+      // nested (or long) node overflows horizontally, that clips the row's
+      // background/selection highlight at the viewport edge. min-width:
+      // max-content lets the row grow with its content so the highlight spans
+      // the full scrollable width (#10).
+      minWidth: "max-content",
     }),
-    [style, tree.props.padding, tree.props.paddingTop]
+    [style, tree.props.padding, tree.props.paddingTop],
   );
   const rowAttrs: React.HTMLAttributes<any> = {
     role: "treeitem",
