@@ -159,6 +159,35 @@ function App() {
 }
 ```
 
+### Lazy Load Children
+
+Pass _loadData_ to load children when an empty internal node is opened. While
+the returned promise is pending, _node_.**isLoading** is true. The loaded
+children should be written back into your tree data, either by updating the
+controlled _data_ prop or by mutating the node's data before the promise
+resolves.
+
+```jsx
+function App() {
+  return (
+    <Tree
+      data={data}
+      openByDefault={false}
+      loadData={async (node) => {
+        const children = await fetchChildren(node.id);
+        node.data.children = children;
+      }}
+    >
+      {Node}
+    </Tree>
+  );
+}
+
+function Node({ node, style }) {
+  return <div style={style}>{node.isLoading ? "Loading..." : node.data.name}</div>;
+}
+```
+
 ### Sync the Selection
 
 It's common to open something elsewhere in the app, but have the tree reflect the new selection.
@@ -288,6 +317,7 @@ interface TreeProps<T> {
   onMove?: handlers.MoveHandler<T>;
   onRename?: handlers.RenameHandler<T>;
   onDelete?: handlers.DeleteHandler<T>;
+  loadData?: (node: NodeApi<T>) => Promise<unknown> | unknown;
 
   /* Renderers*/
   children?: ElementType<renderers.NodeRendererProps<T>>;
@@ -339,6 +369,7 @@ interface TreeProps<T> {
 
   /* Checked State */
   checkedIds?: readonly string[];
+  halfCheckedIds?: readonly string[];
   initialCheckedIds?: readonly string[];
 
   /* Open State */
@@ -466,6 +497,10 @@ _node_.**isChecked**
 
 Returns true if node is checked.
 
+_node_.**isLoading**
+
+Returns true while the node's _loadData_ promise is pending.
+
 _node_.**isHalfChecked**
 
 Returns true if node is not checked, but one or more of its descendants are checked.
@@ -510,6 +545,7 @@ type NodeState = {
   isFocused: boolean;
   isOpen: boolean;
   isClosed: boolean;
+  isLoading: boolean;
   isLeaf: boolean;
   isInternal: boolean;
   willReceiveDrop: boolean;
@@ -728,7 +764,7 @@ Select all nodes.
 
 ### Checked Methods
 
-Set `checkable` to `true` to enable checked state. When enabled, checking a parent node checks all descendants, and checking all children checks the parent. Set `checkStrictly` to `true` to disable parent/child association.
+Set `checkable` to `true` to enable checked state. When enabled, checking a parent node checks all descendants, and checking all children checks the parent. Set `checkStrictly` to `true` to disable parent/child association. Pass `halfCheckedIds` to add custom half-checked nodes for checkbox styles, for example when descendants are controlled or loaded outside the current tree data.
 
 _tree_.**checkedIds** : _Set\<string\>_
 

@@ -20,6 +20,7 @@ import { createRoot, ROOT_ID } from "../data/create-root";
 import { actions as visibility, OpenMap } from "../state/open-slice";
 import { actions as selection } from "../state/selection-slice";
 import { actions as checked } from "../state/checked-slice";
+import { actions as loading } from "../state/loading-slice";
 import { actions as dnd } from "../state/dnd-slice";
 import { DefaultDragPreview } from "../components/default-drag-preview";
 import { DefaultContainer } from "../components/default-container";
@@ -28,7 +29,7 @@ import { Store } from "redux";
 import { createList } from "../data/create-list";
 import { createIndex } from "../data/create-index";
 
-const { safeRun, identify, identifyNull } = utils;
+const { safeRun, identifyNull } = utils;
 const EMPTY_IDS = new Set<string>();
 
 export class TreeApi<T> {
@@ -41,6 +42,7 @@ export class TreeApi<T> {
   private checkedStateCache: {
     root: NodeApi<T>;
     sourceIds: Set<string>; // The raw checked ids from state, used to determine cache validity
+    sourceHalfCheckedIds: readonly string[] | undefined;
     checkStrictly: boolean;
     checkedIds: Set<string>;
     halfCheckedIds: Set<string>;
@@ -340,6 +342,24 @@ export class TreeApi<T> {
       : 0;
     await safeRun(this.props.onDelete, { nodes, ids });
     this.redrawList(fromIndex);
+  }
+
+  async loadData(identity: Identity | T) {
+    if (!this.props.loadData) return;
+    const id = this.identifyNull(identity);
+    if (!id || id === ROOT_ID || this.isLoading(id)) return;
+    const node = this.findNode(id);
+    if (!node) return;
+    const fromIndex = node.rowIndex ?? 0;
+
+    this.dispatch(loading.add(id));
+    try {
+      await this.props.loadData(node);
+      this.update(this.props);
+      this.redrawList(fromIndex);
+    } finally {
+      this.dispatch(loading.remove(id));
+    }
   }
 
   edit(node: string | IdObj | T): Promise<EditResult> {
@@ -852,9 +872,11 @@ export class TreeApi<T> {
     const id = this.identifyNull(identity);
     if (!id) return;
     if (this.isOpen(id)) return;
+    const node = this.findNode(id);
     this.dispatch(visibility.open(id, this.isFiltered));
     if (redraw) this.redrawList(this.get(id)?.rowIndex ?? 0);
     safeRun(this.props.onToggle, id);
+    this.loadDataOnOpen(node);
   }
 
   close(identity: Identity | T, redraw: boolean = true) {
@@ -1000,6 +1022,11 @@ export class TreeApi<T> {
     return this.state.nodes.drag.id === id;
   }
 
+  isLoading(id?: string) {
+    if (!id) return false;
+    return this.state.nodes.loading.ids.has(id);
+  }
+
   isFocused(id: string) {
     return this.hasFocus && this.state.nodes.focus.id === id;
   }
@@ -1041,6 +1068,11 @@ export class TreeApi<T> {
     return utils.dfs(this.root, id);
   }
 
+  private loadDataOnOpen(node: NodeApi<T> | null) {
+    if (!node || node.isRoot || node.isLeaf || node.children?.length) return;
+    this.loadData(node).catch(utils.noop);
+  }
+
   // Collect the node and every descendant id in tree order.
   private collectSubtreeIds(node: NodeApi<T>) {
     const ids: string[] = [];
@@ -1079,6 +1111,7 @@ export class TreeApi<T> {
     }
 
     const sourceIds = this.state.nodes.checked.ids;
+    const sourceHalfCheckedIds = this.props.halfCheckedIds;
     const checkStrictly = this.props.checkStrictly === true;
 
     // If the source checked ids and checkStrictly mode are unchanged since the last call, return the cached checked state. This is an important optimization
@@ -1087,16 +1120,21 @@ export class TreeApi<T> {
     if (
       this.checkedStateCache?.root === this.root &&
       this.checkedStateCache.sourceIds === sourceIds &&
+      this.checkedStateCache.sourceHalfCheckedIds === sourceHalfCheckedIds &&
       this.checkedStateCache.checkStrictly === checkStrictly
     ) {
       return this.checkedStateCache;
     }
 
     const checkedIds = this.normalizeCheckedIds(new Set(sourceIds));
-    const halfCheckedIds = this.getHalfCheckedIds(checkedIds);
+    const halfCheckedIds = this.mergeHalfCheckedIds(
+      checkedIds,
+      this.getHalfCheckedIds(checkedIds),
+    );
     this.checkedStateCache = {
       root: this.root,
       sourceIds,
+      sourceHalfCheckedIds,
       checkStrictly,
       checkedIds,
       halfCheckedIds,
@@ -1138,6 +1176,21 @@ export class TreeApi<T> {
       if (!node.isRoot && ids.has(node.id)) orderedIds.add(node.id);
     });
     return orderedIds;
+  }
+
+  // 根据外部传入的半选中节点列表，合并当前计算出的半选中节点列表，如果halfCheckedIds中有节点在checkedIds中，则将其剔除
+  private mergeHalfCheckedIds(
+    checkedIds: Set<string>,
+    halfCheckedIds: Set<string>,
+  ) {
+    const externalIds = this.props.halfCheckedIds;
+    if (!externalIds?.length) return halfCheckedIds;
+
+    const ids = new Set(halfCheckedIds);
+    externalIds.forEach((id) => {
+      if (id !== ROOT_ID && !checkedIds.has(id)) ids.add(id);
+    });
+    return ids;
   }
 
   private getHalfCheckedIds(checkedIds: Set<string>) {

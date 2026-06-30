@@ -20,6 +20,7 @@ export interface TreeProps<T> {
   onMove?: handlers.MoveHandler<T>;
   onRename?: handlers.RenameHandler<T>;
   onDelete?: handlers.DeleteHandler<T>;
+  loadData?: (node: NodeApi<T>) => Promise<unknown> | unknown;
 
   /* Renderers*/
   children?: ElementType<renderers.NodeRendererProps<T>>;
@@ -67,6 +68,7 @@ export interface TreeProps<T> {
 
   /* Checked State */
   checkedIds?: readonly string[];
+  halfCheckedIds?: readonly string[];
   initialCheckedIds?: readonly string[];
 
   /* Open State */

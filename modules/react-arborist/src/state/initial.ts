@@ -17,6 +17,7 @@ export const initialState = (props?: TreeProps<any>): RootState => ({
     checked: {
       ids: new Set(props?.checkedIds ?? props?.initialCheckedIds ?? []),
     },
+    loading: { ids: new Set() },
   },
   dnd: {
     cursor: { type: "none" },

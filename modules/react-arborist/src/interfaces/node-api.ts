@@ -74,6 +74,10 @@ export class NodeApi<T = any> {
     return this.tree.isChecked(this.id);
   }
 
+  get isLoading() {
+    return this.tree.isLoading(this.id);
+  }
+
   get isHalfChecked() {
     return this.tree.isHalfChecked(this.id);
   }
@@ -112,6 +116,7 @@ export class NodeApi<T = any> {
       isLeaf: this.isLeaf,
       isOpen: this.isOpen,
       isChecked: this.isChecked,
+      isLoading: this.isLoading,
       isHalfChecked: this.isHalfChecked,
       isSelected: this.isSelected,
       isSelectedEnd: this.isSelectedEnd,
@@ -179,6 +184,10 @@ export class NodeApi<T = any> {
 
   toggleCheck() {
     this.tree.toggleCheck(this);
+  }
+
+  loadData() {
+    return this.tree.loadData(this);
   }
 
   activate() {
