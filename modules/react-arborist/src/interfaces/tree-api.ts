@@ -176,7 +176,8 @@ export class TreeApi<T> {
   }
 
   get searchTerm() {
-    return (this.props.searchTerm || "").trim();
+    const term = this.props.searchTerm;
+    return typeof term === "string" ? term.trim() : term;
   }
 
   get matchFn() {
@@ -187,7 +188,9 @@ export class TreeApi<T> {
           // @ts-ignore
           Object.values(node.data as { [k: string]: unknown }),
         );
-        return string.toLocaleLowerCase().includes(term.toLocaleLowerCase());
+        return string
+          .toLocaleLowerCase()
+          .includes(String(term).toLocaleLowerCase());
       });
     return (node: NodeApi<T>) => match(node, this.searchTerm);
   }
@@ -962,7 +965,11 @@ export class TreeApi<T> {
   }
 
   get isFiltered() {
-    return !!this.props.searchTerm?.trim();
+    return (
+      this.searchTerm !== undefined &&
+      this.searchTerm !== null &&
+      this.searchTerm !== ""
+    );
   }
 
   get hasFocus() {

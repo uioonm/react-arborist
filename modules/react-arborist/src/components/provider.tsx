@@ -104,7 +104,7 @@ export function TreeProvider<T>({
     if (api.props.checkedIds !== undefined) {
       api.setChecked(api.props.checkedIds, { notify: false });
     }
-  }, [api.props.checkedIds, api.props.checkable]);
+  }, [api.props.checkedIds, api.props.checkable, api.props.data]);
 
   /* Clear visability for filtered nodes */
   useEffect(() => {

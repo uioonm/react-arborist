@@ -75,8 +75,10 @@ export interface TreeProps<T> {
   initialOpenState?: OpenMap;
 
   /* Search */
-  searchTerm?: string;
-  searchMatch?: (node: NodeApi<T>, searchTerm: string) => boolean;
+  searchTerm?: any;
+  searchMatch?: (node: NodeApi<T>, searchTerm: any) => boolean;
+  /** Keep every descendant visible when its ancestor matches `searchMatch`. */
+  searchMatchKeepChildren?: boolean;
 
   /* Accessibility */
   "aria-label"?: string;

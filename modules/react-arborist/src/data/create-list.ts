@@ -3,7 +3,11 @@ import { TreeApi } from "../interfaces/tree-api";
 
 export function createList<T>(tree: TreeApi<T>) {
   if (tree.isFiltered) {
-    return flattenAndFilterTree(tree.root, tree.isMatch.bind(tree));
+    return flattenAndFilterTree(
+      tree.root,
+      tree.isMatch.bind(tree),
+      tree.props.searchMatchKeepChildren,
+    );
   } else {
     return flattenTree(tree.root);
   }
@@ -27,6 +31,7 @@ function flattenTree<T>(root: NodeApi<T>): NodeApi<T>[] {
 function flattenAndFilterTree<T>(
   root: NodeApi<T>,
   isMatch: (n: NodeApi<T>) => boolean,
+  keepChildrenOfMatches = false,
 ): NodeApi<T>[] {
   const matches: Record<string, boolean> = {};
   const list: NodeApi<T>[] = [];
@@ -40,10 +45,16 @@ function flattenAndFilterTree<T>(
         matches[parent.id] = true;
         parent = parent.parent;
       }
+      if (keepChildrenOfMatches) markDescendants(node);
     }
     if (node.children) {
       for (let child of node.children) markMatch(child);
     }
+  }
+
+  function markDescendants(node: NodeApi<T>) {
+    matches[node.id] = true;
+    node.children?.forEach(markDescendants);
   }
 
   function collect(node: NodeApi<T>) {
