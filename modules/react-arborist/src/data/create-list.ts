@@ -36,20 +36,20 @@ function flattenAndFilterTree<T>(
   const matches: Record<string, boolean> = {};
   const list: NodeApi<T>[] = [];
 
-  function markMatch(node: NodeApi<T>) {
-    const yes = !node.isRoot && isMatch(node);
-    if (yes) {
-      matches[node.id] = true;
-      let parent = node.parent;
-      while (parent) {
-        matches[parent.id] = true;
-        parent = parent.parent;
-      }
-      if (keepChildrenOfMatches) markDescendants(node);
+  function markMatch(node: NodeApi<T>): boolean {
+    const matchesSelf = !node.isRoot && isMatch(node);
+    if (matchesSelf && keepChildrenOfMatches) {
+      markDescendants(node);
+      return true;
     }
-    if (node.children) {
-      for (let child of node.children) markMatch(child);
-    }
+
+    let matchesDescendant = false;
+    node.children?.forEach((child) => {
+      if (markMatch(child)) matchesDescendant = true;
+    });
+    const matchesSubtree = matchesSelf || matchesDescendant;
+    if (matchesSubtree) matches[node.id] = true;
+    return matchesSubtree;
   }
 
   function markDescendants(node: NodeApi<T>) {
