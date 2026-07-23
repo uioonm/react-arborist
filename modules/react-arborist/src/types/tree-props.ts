@@ -58,7 +58,7 @@ export interface TreeProps<T> {
   /* Event Handlers */
   onActivate?: (node: NodeApi<T>) => void;
   onSelect?: (nodes: NodeApi<T>[]) => void;
-  onCheck?: (nodes: NodeApi<T>[]) => void;
+  onCheck?: (nodes: NodeApi<T>[], node?: NodeApi<T>) => void;
   onScroll?: (props: ListOnScrollProps) => void;
   onToggle?: (id: string) => void;
   onFocus?: (node: NodeApi<T>) => void;

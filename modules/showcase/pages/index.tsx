@@ -50,6 +50,19 @@ const Home: NextPage = () => {
             </div>
           </Link>
 
+          <Link href="/checkbox-filter" legacyBehavior>
+            <div className={styles.demoCard}>
+              <div className={`${styles.demoCardImage} cities`}></div>
+              <b>Checkbox Filtering</b>
+              <h2>Filtered Parent Checking</h2>
+              <p>
+                Explore a deeply nested tree and verify that checking a filtered parent affects
+                only its visible leaf descendants.
+              </p>
+              <Link href="/checkbox-filter">View Demo</Link>
+            </div>
+          </Link>
+
           <Link href="/variable-height" legacyBehavior>
             <div className={styles.demoCard}>
               <div className={`${styles.demoCardImage} cities`}></div>
