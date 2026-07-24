@@ -47,6 +47,8 @@ export interface TreeProps<T> {
   disableMultiSelection?: boolean;
   checkable?: boolean;
   checkStrictly?: boolean;
+  /** In search mode, limit check operations to filtered nodes. Defaults to true. */
+  checkOnlyFiltered?: boolean;
   disableSelect?: string | boolean | BoolFunc<T>;
   disableEdit?: string | boolean | BoolFunc<T>;
   disableDrag?: string | boolean | BoolFunc<T>;

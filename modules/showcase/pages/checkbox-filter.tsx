@@ -82,6 +82,7 @@ const data: Data[] = [
 
 export default function CheckboxFilter() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [checkOnlyFiltered, setCheckOnlyFiltered] = useState(true);
   const [checkedNames, setCheckedNames] = useState<string[]>([]);
   const [lastNode, setLastNode] = useState<string>("(none)");
 
@@ -97,6 +98,7 @@ export default function CheckboxFilter() {
           indent={24}
           rowHeight={34}
           searchTerm={searchTerm}
+          checkOnlyFiltered={checkOnlyFiltered}
           onCheck={(nodes, node) => {
             setCheckedNames(nodes.map((checkedNode) => checkedNode.data.name));
             setLastNode(node?.data.name ?? "(batch operation)");
@@ -118,6 +120,14 @@ export default function CheckboxFilter() {
           onChange={(event) => setSearchTerm(event.currentTarget.value)}
           style={{ display: "block", fontSize: 16, margin: "8px 0 24px", padding: 8, width: "100%" }}
         />
+        <label style={{ alignItems: "center", display: "flex", gap: 8, marginBottom: 24 }}>
+          <input
+            checked={checkOnlyFiltered}
+            type="checkbox"
+            onChange={(event) => setCheckOnlyFiltered(event.currentTarget.checked)}
+          />
+          Only check filtered nodes
+        </label>
         <p>
           <strong>Last operation:</strong> {lastNode}
         </p>
