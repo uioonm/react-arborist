@@ -1034,11 +1034,21 @@ export class TreeApi<T> {
       .then(() => {
         const index = this.idToIndex[id];
         if (index === undefined) return;
+        if (align === "smart" && this.isRowVisible(index)) return;
         this.list.current?.scrollToItem(index, align);
       })
       .catch(() => {
         // Id: ${id} never appeared in the list.
       });
+  }
+
+  private isRowVisible(index: number) {
+    const list = this.listEl.current;
+    if (!list || list.clientHeight <= 0) return false;
+    const paddingTop = this.props.padding ?? this.props.paddingTop ?? 0;
+    const top = this.rowTopPosition(index) + paddingTop;
+    const bottom = top + this.rowHeightAt(index);
+    return top >= list.scrollTop && bottom <= list.scrollTop + list.clientHeight;
   }
 
   /* State Checks */
